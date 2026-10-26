@@ -1,0 +1,168 @@
+# 青石五笔 · 外观设置
+# 由设置中心生成，手工修改会在下次保存时被覆盖
+patch:
+  style:
+    color_scheme: qingshi_blue
+    color_scheme_dark: qingshi_blue
+    font_face: "Microsoft YaHei"
+    label_font_face: "Microsoft YaHei"
+    comment_font_face: "Microsoft YaHei"
+    font_point: 13
+    horizontal: true
+    inline_preedit: true
+    layout:
+      round_corner: 6
+      corner_radius: 6
+      border_width: 1
+      margin_x: 10
+      margin_y: 8
+      spacing: 8
+      candidate_spacing: 4
+      hilite_spacing: 3
+      hilite_padding: 2
+      shadow_radius: 6
+  preset_color_schemes:
+    qingshi_blue:
+      name: "青石蓝白"
+      author: "青石五笔"
+      color_format: argb
+      back_color: 0xFFFFFF
+      border_color: 0xDCE5F1
+      text_color: 0x263750
+      hilited_text_color: 0x263750
+      hilited_back_color: 0xFFFFFF
+      hilited_candidate_text_color: 0xFFFFFF
+      hilited_candidate_back_color: 0x2868D7
+      candidate_text_color: 0x263750
+      candidate_back_color: 0xFFFFFF
+      comment_text_color: 0x718198
+      label_color: 0x718198
+      hilited_candidate_label_color: 0xFFFFFF
+    qingshi_ink:
+      name: "水墨灰"
+      author: "青石五笔"
+      color_format: argb
+      back_color: 0xF7F7F5
+      border_color: 0xDDDDD8
+      text_color: 0x3A3A38
+      hilited_text_color: 0x3A3A38
+      hilited_back_color: 0xF7F7F5
+      hilited_candidate_text_color: 0xFFFFFF
+      hilited_candidate_back_color: 0x4A4A46
+      candidate_text_color: 0x3A3A38
+      candidate_back_color: 0xF7F7F5
+      comment_text_color: 0x8A8A84
+      label_color: 0x8A8A84
+      hilited_candidate_label_color: 0xFFFFFF
+    qingshi_green:
+      name: "护眼豆绿"
+      author: "青石五笔"
+      color_format: argb
+      back_color: 0xCCE8CF
+      border_color: 0xB5D6BA
+      text_color: 0x2E4A34
+      hilited_text_color: 0x2E4A34
+      hilited_back_color: 0xCCE8CF
+      hilited_candidate_text_color: 0xFFFFFF
+      hilited_candidate_back_color: 0x3E7B4F
+      candidate_text_color: 0x2E4A34
+      candidate_back_color: 0xCCE8CF
+      comment_text_color: 0x5E7A64
+      label_color: 0x5E7A64
+      hilited_candidate_label_color: 0xFFFFFF
+    qingshi_orange:
+      name: "暖阳橙"
+      author: "青石五笔"
+      color_format: argb
+      back_color: 0xFFF8EF
+      border_color: 0xF2D7B8
+      text_color: 0x4A3524
+      hilited_text_color: 0x4A3524
+      hilited_back_color: 0xFFF8EF
+      hilited_candidate_text_color: 0xFFFFFF
+      hilited_candidate_back_color: 0xE87924
+      candidate_text_color: 0x4A3524
+      candidate_back_color: 0xFFF8EF
+      comment_text_color: 0x9A7656
+      label_color: 0x9A7656
+      hilited_candidate_label_color: 0xFFFFFF
+    qingshi_red:
+      name: "莓果红"
+      author: "青石五笔"
+      color_format: argb
+      back_color: 0xFFF5F5
+      border_color: 0xF0D0D2
+      text_color: 0x482B30
+      hilited_text_color: 0x482B30
+      hilited_back_color: 0xFFF5F5
+      hilited_candidate_text_color: 0xFFFFFF
+      hilited_candidate_back_color: 0xC83E4D
+      candidate_text_color: 0x482B30
+      candidate_back_color: 0xFFF5F5
+      comment_text_color: 0x9A6B71
+      label_color: 0x9A6B71
+      hilited_candidate_label_color: 0xFFFFFF
+    qingshi_black:
+      name: "纯黑白"
+      author: "青石五笔"
+      color_format: argb
+      back_color: 0x101010
+      border_color: 0x383838
+      text_color: 0xE6E6E6
+      hilited_text_color: 0xFFFFFF
+      hilited_back_color: 0x101010
+      hilited_candidate_text_color: 0x111111
+      hilited_candidate_back_color: 0xFFFFFF
+      candidate_text_color: 0xE6E6E6
+      candidate_back_color: 0x101010
+      comment_text_color: 0xA0A0A0
+      label_color: 0xA0A0A0
+      hilited_candidate_label_color: 0x111111
+    qingshi_dark:
+      name: "墨夜深色"
+      author: "青石五笔"
+      color_format: argb
+      back_color: 0x2B2D31
+      border_color: 0x3A3D42
+      text_color: 0xE6E6E6
+      hilited_text_color: 0xF2F2F2
+      hilited_back_color: 0x2B2D31
+      hilited_candidate_text_color: 0xFFFFFF
+      hilited_candidate_back_color: 0x2F7CF6
+      candidate_text_color: 0xE6E6E6
+      candidate_back_color: 0x2B2D31
+      comment_text_color: 0x8A8F99
+      label_color: 0x8A8F99
+      hilited_candidate_label_color: 0xFFFFFF
+    qingshi_sakura:
+      name: "樱粉浅"
+      author: "青石五笔"
+      color_format: argb
+      back_color: 0xFFF7F8
+      border_color: 0xF2DDE1
+      text_color: 0x4A2E34
+      hilited_text_color: 0x4A2E34
+      hilited_back_color: 0xFFF7F8
+      hilited_candidate_text_color: 0xFFFFFF
+      hilited_candidate_back_color: 0xD46A85
+      candidate_text_color: 0x4A2E34
+      candidate_back_color: 0xFFF7F8
+      comment_text_color: 0xA8808A
+      label_color: 0xA8808A
+      hilited_candidate_label_color: 0xFFFFFF
+    qingshi_paper:
+      name: "暖纸米黄"
+      author: "青石五笔"
+      color_format: argb
+      back_color: 0xFBF6EA
+      border_color: 0xE8DFC8
+      text_color: 0x3D3527
+      hilited_text_color: 0x3D3527
+      hilited_back_color: 0xFBF6EA
+      hilited_candidate_text_color: 0xFFFFFF
+      hilited_candidate_back_color: 0xB07A3C
+      candidate_text_color: 0x3D3527
+      candidate_back_color: 0xFBF6EA
+      comment_text_color: 0x8C8271
+      label_color: 0x8C8271
+      hilited_candidate_label_color: 0xFFFFFF

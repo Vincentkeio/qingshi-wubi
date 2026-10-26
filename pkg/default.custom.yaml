@@ -1,0 +1,8 @@
+# 五笔三版本方案切换
+patch:
+  schema_list:
+    - schema: wubi86
+    - schema: wubi98
+    - schema: wubi06
+  menu:
+    page_size: 9

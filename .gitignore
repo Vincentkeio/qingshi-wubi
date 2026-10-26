@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*.log
+*.obj
+*.pdb
+*.spec
+.venv/
+dist/
+backup/
+rime-bin/
+boost-sfx-*/
+boost-bin*.exe
+weasel-installer.exe
+gui/payload.zip
+gui/p[123]_*.png
+.workbuddy-ai/
+.work/

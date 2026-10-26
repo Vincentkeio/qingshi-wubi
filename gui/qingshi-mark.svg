@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="青石五笔标志">
+  <rect width="128" height="128" rx="22" fill="#111318"/>
+  <g fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="9">
+    <path d="M35 34h58"/>
+    <path d="M42 49v43"/>
+    <path d="M56 51 39 78"/>
+    <path d="M72 51 88 78"/>
+    <path d="M62 91h31"/>
+  </g>
+</svg>

@@ -1,0 +1,15 @@
+{
+  "version": "1.0.6",
+  "platform": "Windows 10/11 x64",
+  "installer": {
+    "name": "QingshiSetup.exe",
+    "size": 45581243,
+    "sha256": "2cbbad6223eb72d8d3c6db52578fe9709296ac1b339ca67c8e39c4651be219f6"
+  },
+  "upstream_weasel": "82b50c9e9b9ee0bd31357db6f25ddc804546c7f7",
+  "librime_binary_revision": "33e7814",
+  "submodules": {
+    "weasel/librime": "1c23358157934bd6e6d6981f0c0164f05393b497",
+    "weasel/plum": "cab9ed35289f2022b6888503750d2dfb1851dbe0"
+  }
+}

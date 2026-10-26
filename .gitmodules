@@ -1,0 +1,7 @@
+[submodule "weasel/librime"]
+	path = weasel/librime
+	url = https://github.com/rime/librime.git
+
+[submodule "weasel/plum"]
+	path = weasel/plum
+	url = https://github.com/rime/plum.git

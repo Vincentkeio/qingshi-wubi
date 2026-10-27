@@ -13,7 +13,7 @@ static const char c_szModelName[] = "ThreadingModel";
 HKL FindIME(LANGID langid) {
   HKL hKL = NULL;
   WCHAR key[9];
-  HKEY hKey;
+  HKEY hKey = nullptr;
   LSTATUS ret =
       RegOpenKeyExW(HKEY_LOCAL_MACHINE,
                     L"SYSTEM\\CurrentControlSet\\Control\\Keyboard Layouts", 0,
@@ -22,7 +22,7 @@ HKL FindIME(LANGID langid) {
     for (DWORD id = (0xE0200000 | langid);
          hKL == NULL && id <= (0xE0FF0000 | langid); id += 0x10000) {
       StringCchPrintfW(key, _countof(key), L"%08X", id);
-      HKEY hSubKey;
+      HKEY hSubKey = nullptr;
       ret = RegOpenKeyExW(hKey, key, 0, KEY_READ, &hSubKey);
       if (ret == ERROR_SUCCESS) {
         WCHAR data[32];
@@ -31,13 +31,15 @@ HKL FindIME(LANGID langid) {
         ret = RegQueryValueExW(hSubKey, L"Ime File", NULL, &type, (LPBYTE)data,
                                &size);
         if (ret == ERROR_SUCCESS && type == REG_SZ &&
-            _wcsicmp(data, L"weasel.ime") == 0)
-          hKL = (HKL)id;
+            _wcsicmp(data, L"qingshi_game.ime") == 0)
+          hKL = reinterpret_cast<HKL>(static_cast<INT_PTR>(static_cast<LONG>(id)));
       }
-      RegCloseKey(hSubKey);
+      if (hSubKey)
+        RegCloseKey(hSubKey);
     }
   }
-  RegCloseKey(hKey);
+  if (hKey)
+    RegCloseKey(hKey);
   return hKL;
 }
 
@@ -67,7 +69,7 @@ BOOL RegisterProfiles() {
 
   const auto text_service_desc = get_weasel_ime_name();
   const WCHAR* text_service_desc_str = text_service_desc.c_str();
-  ULONG text_service_desc_len = text_service_desc.size() * sizeof(wchar_t);
+  ULONG text_service_desc_len = static_cast<ULONG>(text_service_desc.size());
 
   WCHAR achIconFile[MAX_PATH];
   ULONG cchIconFile =

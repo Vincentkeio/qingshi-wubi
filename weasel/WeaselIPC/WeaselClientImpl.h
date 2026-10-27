@@ -23,6 +23,8 @@ class ClientImpl {
   bool SelectCandidateOnCurrentPage(size_t index);
   bool HighlightCandidateOnCurrentPage(size_t index);
   bool ChangePage(bool backward);
+  bool ReloadConfig();
+  bool AdjustShadow(int action, size_t index);
   void UpdateInputPosition(RECT const& rc);
   void FocusIn();
   void FocusOut();

@@ -379,7 +379,10 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <TargetMachine>MachineX64</TargetMachine>
       <ModuleDefinitionFile>WeaselTSF.def</ModuleDefinitionFile>
-      <AdditionalDependencies>Usp10.lib;d2d1.lib;dwrite.lib;d3d11.lib;dxgi.lib;dcomp.lib;shcore.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <!-- dbghelp 只在崩溃转储时用；反作弊会拒绝把它加载进游戏进程，
+           静态导入会让整个 TSF DLL 在游戏里加载失败（表现为打不了字）。 -->
+      <DelayLoadDLLs>dbghelp.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
+      <AdditionalDependencies>Usp10.lib;d2d1.lib;dwrite.lib;d3d11.lib;dxgi.lib;dcomp.lib;shcore.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;delayimp.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <ResourceCompile>
       <AdditionalIncludeDirectories>$(SolutionDir)\include</AdditionalIncludeDirectories>

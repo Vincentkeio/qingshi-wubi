@@ -32,7 +32,20 @@ enum WEASEL_IPC_COMMAND {
   WEASEL_IPC_SELECT_CANDIDATE_ON_CURRENT_PAGE,
   WEASEL_IPC_HIGHLIGHT_CANDIDATE_ON_CURRENT_PAGE,
   WEASEL_IPC_CHANGE_PAGE,
+  // 重读用户配置（weasel.custom.yaml + 方案级 UI 设置 + 候选调序表），
+  // 但**不跑部署器**。改外观/按键/候选数/标点这类设置走这条，
+  // 毫秒级完成；只有码表、词库、方案启停才需要真正的 deploy。
+  WEASEL_IPC_RELOAD_CONFIG,
+  // 候选调序：wParam = 动作（见 ShadowAction），lParam = 当前页候选序号。
+  WEASEL_IPC_SHADOW_ACTION,
   WEASEL_IPC_LAST_COMMAND
+};
+
+// 候选调序动作（WEASEL_IPC_SHADOW_ACTION 的 wParam）。
+enum WEASEL_SHADOW_ACTION {
+  WEASEL_SHADOW_PIN = 0,     // 把该候选置顶到本编码的第一位
+  WEASEL_SHADOW_UNPIN = 1,   // 撤掉本编码的全部置顶
+  WEASEL_SHADOW_DEMOTE = 2,  // 把该候选移到本编码的末位
 };
 
 // Posted by WeaselTrayIcon to the server window so that Shell_NotifyIcon runs
@@ -85,6 +98,15 @@ struct RequestHandler {
   virtual void EndMaintenance() {}
   virtual void SetOption(DWORD session_id, const std::string& opt, bool val) {}
   virtual void UpdateColorTheme(BOOL darkMode) {}
+  // 重读用户配置但不部署：返回 false 表示服务端未接入（旧版本）。
+  virtual bool ReloadConfig() { return false; }
+  // 候选调序：action 见 WEASEL_SHADOW_ACTION，index 是当前页候选序号。
+  virtual bool AdjustShadow(int action,
+                            size_t index,
+                            DWORD session_id,
+                            EatLine eat = 0) {
+    return false;
+  }
 };
 
 // 處理server端回應之物件
@@ -136,6 +158,10 @@ class Client {
   bool HighlightCandidateOnCurrentPage(size_t index);
   // 翻页，backward = true 向前翻，false向后翻
   bool ChangePage(bool backward);
+  // 重读用户配置但不部署（外观/按键/候选数/标点/主题即时生效）
+  bool ReloadConfig();
+  // 候选调序：action 见 WEASEL_SHADOW_ACTION，index 是当前页候选序号
+  bool AdjustShadow(int action, size_t index);
   // 更新输入位置
   void UpdateInputPosition(RECT const& rc);
   // 输入窗口获得焦点

@@ -30,6 +30,9 @@ class WeaselPanel {
   void ReleaseAllResources();
   BOOL Create(HWND parent, bool preview_mode = false);
   void SetPreviewMode(bool enabled) { m_preview_mode = enabled; }
+  // 面板在构造时拷贝了一份样式，之后不会自动跟随。改完配置要刷新时先调这个，
+  // 否则 /reload 改了字号、排列方向、配色都不会体现在已经创建过的窗口上。
+  void SetStyle(const UIStyle& style) { m_style = style; }
   bool GetIsReposition() { return m_istorepos; }
 
   static const int AUTOREV_TIMER = 20241209;
@@ -70,6 +73,8 @@ class WeaselPanel {
   LRESULT OnLeftClickUp(UINT uMsg, WPARAM wParam, LPARAM lParam);
   LRESULT OnLeftClickDown(UINT uMsg, WPARAM wParam, LPARAM lParam);
   LRESULT OnRightClickUp(UINT uMsg, WPARAM wParam, LPARAM lParam);
+  // 中键点候选 = 直接置顶（不弹菜单，改完立刻重排并重绘）
+  LRESULT OnMiddleClickUp(UINT uMsg, WPARAM wParam, LPARAM lParam);
   // 右键菜单：固顶词条 / 自定义词条 / 打开设置 / 重新部署
   int _HitCandidate(CPoint point);
   bool _PinPhrase(const wstring& word, int position);

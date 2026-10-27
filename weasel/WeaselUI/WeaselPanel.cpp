@@ -6,10 +6,14 @@
 #include "VerticalLayout.h"
 #include <filesystem>
 #include <fstream>
+#include <cstdarg>
+#include <cstdio>
+#include <functional>
 #include <memory>
 #include <resource.h>
 #include <rime_api.h>
 #include <shellapi.h>
+
 #include <string>
 #include <vector>
 #include <windowsx.h>
@@ -27,6 +31,23 @@ using namespace weasel;
   ((((color & 0xff000000) >> 25) & 0xff) << 24) | (color & 0x00ffffff)
 
 namespace {
+// 面板侧诊断日志：单独一个文件，用来确认右键/中键有没有进到窗口过程。
+static void PanelDiag(const wchar_t* fmt, ...) {
+  wchar_t dir[MAX_PATH] = {0};
+  if (GetTempPathW(MAX_PATH, dir) == 0)
+    return;
+  std::wstring path = std::wstring(dir) + L"qingshi-panel.log";
+  FILE* f = nullptr;
+  if (_wfopen_s(&f, path.c_str(), L"a, ccs=UTF-8") != 0 || !f)
+    return;
+  va_list ap;
+  va_start(ap, fmt);
+  vfwprintf_s(f, fmt, ap);
+  va_end(ap);
+  fwprintf_s(f, L"\n");
+  fclose(f);
+}
+
 class ThreadDpiAwarenessScope {
  public:
   ThreadDpiAwarenessScope() {
@@ -1374,12 +1395,27 @@ void WeaselPanel::_Redeploy() {
   }
 }
 
+LRESULT WeaselPanel::OnMiddleClickUp(UINT uMsg, WPARAM wParam, LPARAM lParam) {
+  if (m_preview_mode)
+    return 0;
+  CPoint point(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+  int hit = _HitCandidate(point);
+  PanelDiag(L"[middle] at (%d,%d) hit=%d has_cb=%d", point.x, point.y, hit,
+            weasel::g_shadow_action ? 1 : 0);
+  if (hit >= 0 && weasel::g_shadow_action) {
+    // 直接置顶，不弹菜单：改完由服务端把重排后的候选回传，窗口当场重绘。
+    weasel::g_shadow_action(static_cast<size_t>(hit), 0 /* SHADOW_PIN */);
+  }
+  return 0;
+}
+
 LRESULT WeaselPanel::OnRightClickUp(UINT uMsg, WPARAM wParam, LPARAM lParam) {
   if (m_preview_mode)
     return 0;
 
   CPoint point(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
   int hit = _HitCandidate(point);
+  PanelDiag(L"[entry] rclick at (%d,%d) hit=%d", point.x, point.y, hit);
   if (hit < 0)
     hit = m_ctx.cinfo.highlighted;
   // 坐标可能因 DPI 缩放对不上，兜底用第一个候选，避免菜单点了没反应
@@ -1443,6 +1479,8 @@ LRESULT WeaselPanel::OnRightClickUp(UINT uMsg, WPARAM wParam, LPARAM lParam) {
   int cmd = (int)::TrackPopupMenu(
       menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_LEFTALIGN | TPM_TOPALIGN,
       screen.x, screen.y, 0, owner, nullptr);
+  PanelDiag(L"[menu] hit=%d word=%ls cmd=%d has_cb=%d", hit, word.c_str(), cmd,
+            weasel::g_shadow_action ? 1 : 0);
   if (temp_owner) {
     ::PostMessageW(temp_owner, WM_NULL, 0, 0);
     ::DestroyWindow(temp_owner);
@@ -1450,13 +1488,31 @@ LRESULT WeaselPanel::OnRightClickUp(UINT uMsg, WPARAM wParam, LPARAM lParam) {
   ::DestroyMenu(menu);
 
   switch (cmd) {
-    case IDM_PIN:
-      if (!word.empty() && _PinPhrase(word, 1)) {
+    case IDM_PIN: {
+      // 诊断：确认右键菜单走的是新路径还是老的「改词库 + 部署」。
+      wchar_t diag_dir[MAX_PATH] = {0};
+      if (GetTempPathW(MAX_PATH, diag_dir)) {
+        std::wstring p = std::wstring(diag_dir) + L"qingshi-panel.log";
+        FILE* f = nullptr;
+        if (_wfopen_s(&f, p.c_str(), L"a, ccs=UTF-8") == 0 && f) {
+          fwprintf_s(f, L"[pin] has_cb=%d hit=%d word=%ls\n",
+                     weasel::g_shadow_action ? 1 : 0, hit, word.c_str());
+          fclose(f);
+        }
+      }
+      // 走内存里的 shadow 层：立刻重排并刷新，不写词库、不跑部署器。
+      // 只有服务端没接回调（旧版）时才回落到「改词库 + 重新部署」。
+      if (weasel::g_shadow_action && hit >= 0) {
+        weasel::g_shadow_action(static_cast<size_t>(hit), 0 /* SHADOW_PIN */);
+      } else if (!word.empty() && _PinPhrase(word, 1)) {
         _Redeploy();
       }
       break;
+    }
     case IDM_REMOVE:
-      if (!word.empty() && _RemovePhrase(word)) {
+      if (weasel::g_shadow_action && hit >= 0) {
+        weasel::g_shadow_action(static_cast<size_t>(hit), 1 /* SHADOW_UNPIN */);
+      } else if (!word.empty() && _RemovePhrase(word)) {
         _Redeploy();
       }
       break;
@@ -1468,8 +1524,12 @@ LRESULT WeaselPanel::OnRightClickUp(UINT uMsg, WPARAM wParam, LPARAM lParam) {
       break;
     default:
       if (cmd > IDM_POS_BASE && cmd <= IDM_POS_BASE + 5 && !word.empty()) {
-        if (_PinPhrase(word, cmd - IDM_POS_BASE))
+        // 「调整位置」同样走 shadow 层：action = 100 + 目标位次
+        if (weasel::g_shadow_action && hit >= 0) {
+          weasel::g_shadow_action(static_cast<size_t>(hit), cmd);
+        } else if (_PinPhrase(word, cmd - IDM_POS_BASE)) {
           _Redeploy();
+        }
       }
       break;
   }
@@ -1503,6 +1563,14 @@ LRESULT WeaselPanel::MsgHandler(HWND hwnd,
       return OnLeftClickDown(uMsg, wParam, lParam);
     case WM_RBUTTONUP:
       return OnRightClickUp(uMsg, wParam, lParam);
+    case WM_MBUTTONUP:
+      return OnMiddleClickUp(uMsg, wParam, lParam);
+    case WEASEL_WM_SHADOW_REFRESH:
+      // 回到消息循环后才刷新，避开窗口过程重入
+      PanelDiag(L"[refresh] shadow refresh in message loop");
+      if (weasel::g_shadow_refresh)
+        weasel::g_shadow_refresh();
+      return 0;
     case WM_DPICHANGED:
       if (lParam) {
         const auto* rc = reinterpret_cast<const RECT*>(lParam);

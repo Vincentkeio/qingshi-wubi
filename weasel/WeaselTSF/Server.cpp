@@ -3,6 +3,7 @@
 #include "Globals.h"
 #include "Register.h"
 #include "WeaselTSF.h"
+#include "QingshiDiag.h"
 #include <VersionHelpers.hpp>
 
 void DllAddRef() {
@@ -79,6 +80,8 @@ static void BuildGlobalObjects() {
 }
 
 STDAPI DllGetClassObject(REFCLSID rclsid, REFIID riid, void** ppvObject) {
+  // 这一行能回答"TSF 到底有没有来加载我们"：进程里出现它，说明输入法正在被激活。
+  qingshi::diag::Log(L"DllGetClassObject called");
   if (g_classFactory == NULL) {
     EnterCriticalSection(&g_cs);
     if (g_classFactory == NULL)

@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "WeaselTSF.h"
 #include "Compartment.h"
+#include "QingshiDiag.h"
 #include <resource.h>
 #include <functional>
 #include "ResponseParser.h"
@@ -92,14 +93,18 @@ BOOL WeaselTSF::_IsKeyboardDisabled() {
   ITfDocumentMgr* pDocMgrFocus = NULL;
   ITfContext* pContext = NULL;
   BOOL fDisabled = FALSE;
+  BOOL keyboard_disabled = FALSE;
+  BOOL empty_context = FALSE;
 
   if ((_pThreadMgr->GetFocus(&pDocMgrFocus) != S_OK) ||
       (pDocMgrFocus == NULL)) {
+    qingshi::diag::Log(L"keyboard state: no focused document manager");
     fDisabled = TRUE;
     goto Exit;
   }
 
   if ((pDocMgrFocus->GetTop(&pContext) != S_OK) || (pContext == NULL)) {
+    qingshi::diag::Log(L"keyboard state: focused document has no context");
     fDisabled = TRUE;
     goto Exit;
   }
@@ -115,22 +120,28 @@ BOOL WeaselTSF::_IsKeyboardDisabled() {
       VARIANT var;
       if (pCompartmentDisabled->GetValue(&var) == S_OK) {
         if (var.vt == VT_I4)  // Even VT_EMPTY, GetValue() can succeed
-          fDisabled = (BOOL)var.lVal;
+          keyboard_disabled = (BOOL)var.lVal;
       }
       pCompartmentDisabled->Release();
     }
 
-    /* Check GUID_COMPARTMENT_EMPTYCONTEXT */
+    /* GUID_COMPARTMENT_EMPTYCONTEXT 描述的是"文档里没有文字"，不是
+       "键盘不可用"。游戏、CEF 之类的宿主会把**空的聊天输入框**标成空上下文，
+       若把它当成禁用，就会出现"永远吃不到第一个按键"的死锁：一个字都进不来，
+       连切中英文的 Shift 也被放行给游戏。
+       所以这里只读取用于诊断，不参与禁用判断。 */
     if (pCompMgr->GetCompartment(GUID_COMPARTMENT_EMPTYCONTEXT,
                                  &pCompartmentEmptyContext) == S_OK) {
       VARIANT var;
       if (pCompartmentEmptyContext->GetValue(&var) == S_OK) {
-        if (var.vt == VT_I4)  // Even VT_EMPTY, GetValue() can succeed
-          fDisabled = (BOOL)var.lVal;
+        if (var.vt == VT_I4)
+          empty_context = (BOOL)var.lVal;
       }
       pCompartmentEmptyContext->Release();
     }
     pCompMgr->Release();
+
+    fDisabled = fDisabled || keyboard_disabled;
   }
 
 Exit:
@@ -138,6 +149,10 @@ Exit:
     pContext->Release();
   if (pDocMgrFocus)
     pDocMgrFocus->Release();
+  if (keyboard_disabled || empty_context)
+    qingshi::diag::Log(L"keyboard state: keyDisabled=%d emptyContext=%d -> %s",
+                       keyboard_disabled ? 1 : 0, empty_context ? 1 : 0,
+                       fDisabled ? L"disabled" : L"active");
   return fDisabled;
 }
 

@@ -14,7 +14,7 @@ OUTPUT = ROOT / 'weasel/output'
 
 def build_payload():
     entries = {}
-    for name in ('WeaselServer.exe', 'WeaselDeployer.exe', 'weaselx64.dll', 'rime.dll', 'WinSparkle.dll',
+    for name in ('WeaselServer.exe', 'WeaselDeployer.exe', 'weaselx64.dll', 'qingshi_game.ime', 'rime.dll', 'WinSparkle.dll',
                  'start_service.bat', 'stop_service.bat'):
         entries['runtime/' + name] = OUTPUT / name
     entries['runtime/data/weasel.yaml'] = OUTPUT / 'data/weasel.yaml'

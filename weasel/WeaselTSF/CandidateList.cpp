@@ -12,9 +12,32 @@ using namespace weasel;
 CCandidateList::CCandidateList(com_ptr<WeaselTSF> pTextService)
     : _ui(make_unique<UI>()), _tsf(pTextService), _pbShow(TRUE) {
   _cRef = 1;
+  // 候选窗跑在 TSF 进程里，而候选调序的数据在服务端 —— 中间必须走 IPC。
+  // 之前直接在服务端注册回调，TSF 进程里那份全局永远是空的，
+  // 于是右键「固顶」一路退回「改词库 + 全量部署」。
+  _ui->SetShadowAction([this](size_t index, int action) {
+    if (_tsf)
+      _tsf->_AdjustShadow(action, index);   // 只发 IPC，不在这里重绘
+  });
+  weasel::g_shadow_refresh = [this] { DoShadowRefresh(); };
 }
 
-CCandidateList::~CCandidateList() {}
+void CCandidateList::RequestShadowRefresh() {
+  HWND h = hwnd();
+  if (h)
+    ::PostMessageW(h, WEASEL_WM_SHADOW_REFRESH, 0, 0);
+}
+
+void CCandidateList::DoShadowRefresh() {
+  if (_tsf)
+    _tsf->_RefreshCandidates();
+}
+
+CCandidateList::~CCandidateList() {
+  // 全局回调指向 this，对象没了必须清掉，否则下一次刷新会踩空指针。
+  weasel::g_shadow_refresh = nullptr;
+  weasel::g_shadow_action = nullptr;
+}
 
 STDMETHODIMP CCandidateList::QueryInterface(REFIID riid, void** ppvObj) {
   if (ppvObj == nullptr) {
@@ -204,7 +227,105 @@ STDMETHODIMP CCandidateList::FinalizeExactCompositionString() {
   return E_NOTIMPL;
 }
 
+void CCandidateList::ReorderLocal(const std::wstring& word) {
+  if (!_ui || word.empty())
+    return;
+  auto& candies = _ui->ctx().cinfo.candies;
+  if (candies.size() < 2)
+    return;
+  auto it = std::find_if(candies.begin(), candies.end(),
+                         [&](const weasel::Text& t) { return t.str == word; });
+  if (it == candies.end() || it == candies.begin())
+    return;   // 没这个词，或已经在第一位
+
+  const size_t from = static_cast<size_t>(it - candies.begin());
+
+  // 第一次重排时建立映射（显示位置 → 引擎原始索引）
+  // 第一次改动前存一份原始顺序，取消固顶时还原
+  if (m_original_candies.size() != candies.size())
+    m_original_candies = candies;
+
+  if (m_display_order.size() != candies.size()) {
+    m_display_order.resize(candies.size());
+    for (size_t i = 0; i < candies.size(); ++i)
+      m_display_order[i] = i;
+  }
+
+  weasel::Text picked = *it;
+  candies.erase(candies.begin() + from);
+  candies.insert(candies.begin(), picked);
+
+  // 映射同步：把 from 对应的原始索引挪到最前
+  const size_t orig = m_display_order[from];
+  m_display_order.erase(m_display_order.begin() + from);
+  m_display_order.insert(m_display_order.begin(), orig);
+
+  // 只重排布局并重绘：panel.Refresh 不销毁窗口、不回调宿主。
+  _ui->Refresh();
+}
+
+void CCandidateList::RestoreLocal() {
+  if (!_ui || m_original_candies.empty())
+    return;
+  auto& candies = _ui->ctx().cinfo.candies;
+  if (candies.size() != m_original_candies.size())
+    return;
+  candies = m_original_candies;
+  m_display_order.clear();
+  _ui->Refresh();
+}
+
+void CCandidateList::MoveLocal(const std::wstring& word, size_t target) {
+  if (!_ui || word.empty())
+    return;
+  auto& candies = _ui->ctx().cinfo.candies;
+  if (candies.size() < 2)
+    return;
+  auto it = std::find_if(candies.begin(), candies.end(),
+                         [&](const weasel::Text& t) { return t.str == word; });
+  if (it == candies.end())
+    return;
+  const size_t from = static_cast<size_t>(it - candies.begin());
+  if (target >= candies.size())
+    target = candies.size() - 1;
+  if (from == target)
+    return;
+
+  // 第一次改动前存一份原始顺序，取消固顶时还原
+  if (m_original_candies.size() != candies.size())
+    m_original_candies = candies;
+
+  if (m_display_order.size() != candies.size()) {
+    m_display_order.resize(candies.size());
+    for (size_t i = 0; i < candies.size(); ++i)
+      m_display_order[i] = i;
+  }
+
+  weasel::Text picked = candies[from];
+  candies.erase(candies.begin() + from);
+  candies.insert(candies.begin() + target, picked);
+
+  const size_t orig = m_display_order[from];
+  m_display_order.erase(m_display_order.begin() + from);
+  m_display_order.insert(m_display_order.begin() + target, orig);
+
+  _ui->Refresh();
+}
+
+void CCandidateList::UpdateLocalOnly(const Context& ctx,
+                                     const Status& status) {
+  _ui->Update(ctx, status);
+  const bool allowShow = _localUI || _pbShow;
+  if (status.composing)
+    Show(allowShow);
+  else
+    Show(FALSE);
+}
+
 void CCandidateList::UpdateUI(const Context& ctx, const Status& status) {
+  // 新的候选列表意味着顺序重新来自引擎，本地重排的映射与快照都作废。
+  m_display_order.clear();
+  m_original_candies.clear();
   if (_ui->style().inline_preedit) {
     _ui->style().client_caps |= weasel::INLINE_PREEDIT_CAPABLE;
   } else {
@@ -399,6 +520,7 @@ void CCandidateList::StartUI() {
   }
 
   const HRESULT begin = pUIElementMgr->BeginUIElement(this, &_pbShow, &uiid);
+  _uiLess = (thread_flags & TF_TMF_UIELEMENTENABLEDONLY) != 0;
   qingshi::diag::Log(
       L"StartUI view=%s flags=%s BeginUIElement hr=0x%08lX pbShow=%d uiid=%lu",
       qingshi::diag::DescribeWindow(view).c_str(),
@@ -438,6 +560,7 @@ void CCandidateList::EndUI() {
   _hostDeclined = false;
   _hostConsumed = false;
   _localUI = false;
+  _uiLess = false;
   _updateSeq = 0;
   _DisposeUIWindow();
 }

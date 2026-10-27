@@ -17,26 +17,29 @@ import winreg
 
 class FakeRegistry:
     def __init__(self):
-        self.values = {}
+        self.records = {}
 
     def get(self, hive, key, name='', view=winreg.KEY_WOW64_64KEY):
-        return self.values.get((hive, key, name, view))
+        return self.records.get((hive, key, name, view))
 
     def set(self, hive, key, name, value, view=winreg.KEY_WOW64_64KEY):
-        self.values[(hive, key, name, view)] = value
+        self.records[(hive, key, name, view)] = value
 
     def children(self, hive, key, view=winreg.KEY_WOW64_64KEY):
         prefix = key + '\\'
-        return sorted({k[len(prefix):].split('\\')[0] for h, k, n, v in self.values if h == hive and v == view and k.startswith(prefix)})
+        return sorted({k[len(prefix):].split('\\')[0] for h, k, n, v in self.records if h == hive and v == view and k.startswith(prefix)})
 
     def delete(self, hive, key, view=winreg.KEY_WOW64_64KEY):
-        for address in list(self.values):
+        for address in list(self.records):
             h, k, n, v = address
             if h == hive and v == view and (k == key or k.startswith(key + '\\')):
-                del self.values[address]
+                del self.records[address]
 
     def delete_value(self, hive, key, name, view=winreg.KEY_WOW64_64KEY):
-        self.values.pop((hive, key, name, view), None)
+        self.records.pop((hive, key, name, view), None)
+
+    def values(self, hive, key, view=winreg.KEY_WOW64_64KEY):
+        return [name for h, k, name, v in self.records if h == hive and k == key and v == view]
 
 
 class FakeWindows:
@@ -58,6 +61,32 @@ class FakeWindows:
 
     def tip(self, remove=False):
         self.events.append(('tip', remove))
+
+    def install_system_ime(self, source):
+        import uuid
+        target = backend.SYSTEM_IME_DIR / ('weaselx64-' + uuid.uuid4().hex + '.dll')
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+        self.events.append(('system_ime', target))
+        return target
+
+    def remove_system_ime(self):
+        self.remove_tree(backend.SYSTEM_IME_DIR, backend.SYSTEM_IME_DIR)
+
+    def install_game_ime(self, source):
+        self.events.append(('game_ime', source))
+
+    def rollback_game_ime(self):
+        self.events.append(('game_rollback',))
+
+    def finish_game_ime(self):
+        self.events.append(('game_finish',))
+
+    def remove_game_ime(self):
+        self.events.append(('game_remove',))
+
+    def schedule_delete(self, path):
+        self.pending.append(str(path))
 
     def stop(self, roots):
         self.events.append(('stop', roots))
@@ -92,6 +121,9 @@ class InstallerTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix='qingshi-test-')
         self.base = Path(self.temporary.name)
+        system_patch = patch.object(backend, 'SYSTEM_IME_DIR', self.base / 'Windows/System32/IME/QingshiWubi')
+        system_patch.start()
+        self.addCleanup(system_patch.stop)
         self.profile = self.base / 'Users/tester'
         self.profile.mkdir(parents=True)
         test_temp = self.base / 'Temp'
@@ -104,7 +136,7 @@ class InstallerTests(unittest.TestCase):
         self.env.start()
         self.system = FakeWindows(self.profile)
         self.payload = self.base / 'payload.zip'
-        self.files = {f'runtime/{name}': name.encode() for name in ('WeaselServer.exe', 'WeaselDeployer.exe', 'weaselx64.dll', 'rime.dll')}
+        self.files = {f'runtime/{name}': name.encode() for name in ('WeaselServer.exe', 'WeaselDeployer.exe', 'weaselx64.dll', 'qingshi_game.ime', 'rime.dll')}
         self.files.update({'user/custom_phrase.txt': b'# template', 'user/weasel.custom.yaml': b'# template'})
         self.write_payload()
         self.executable = self.base / 'setup.exe'
@@ -123,6 +155,31 @@ class InstallerTests(unittest.TestCase):
                 archive.writestr(name, data)
             archive.writestr('checksums.json', json.dumps(hashes))
 
+    def test_upgrade_failure_keeps_previous_runtime_and_manifest(self):
+        self.install()
+        marker = self.installer.root / backend.MARKER
+        previous = marker.read_bytes()
+        old_dll = self.installer.registered_dll()
+        self.system.fail_deploy = True
+        with self.assertRaises(RuntimeError):
+            self.installer.install(self.executable)
+        self.assertEqual(marker.read_bytes(), previous)
+        self.assertEqual(self.installer.registered_dll(), old_dll)
+        self.assertTrue(old_dll.is_file())
+        self.assertIn(('game_rollback',), self.system.events)
+
+    def test_game_ime_is_installed_before_tsf_registration(self):
+        self.install()
+        events = [event[0] for event in self.system.events]
+        self.assertLess(events.index('game_ime'), events.index('register'))
+
+    def test_missing_game_component_is_rejected_before_system_changes(self):
+        del self.files['runtime/qingshi_game.ime']
+        self.write_payload()
+        with self.assertRaisesRegex(RuntimeError, '必要的输入法组件'):
+            self.installer.install(self.executable)
+        self.assertEqual(self.system.events, [])
+
     def install(self):
         result = self.installer.install(self.executable)
         self.assertTrue(result['ok'])
@@ -136,7 +193,7 @@ class InstallerTests(unittest.TestCase):
         self.assertTrue(result['ok'])
         self.assertFalse(self.installer.root.exists())
         self.assertFalse(self.installer.data.exists())
-        self.assertFalse(self.system.reg.values)
+        self.assertFalse(self.system.reg.records)
 
     def test_keep_data_and_reinstall_preserves_newer_phrases(self):
         self.install()

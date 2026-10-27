@@ -361,6 +361,33 @@ DWORD ServerImpl::OnHighlightCandidateOnCurrentPage(WEASEL_IPC_COMMAND uMsg,
   return 0;
 }
 
+DWORD ServerImpl::OnReloadConfig(WEASEL_IPC_COMMAND uMsg,
+                                 DWORD wParam,
+                                 DWORD lParam) {
+  // 不跑部署器：只让引擎重读 weasel 配置与方案级 UI 设置。
+  // 返回 1 表示已生效，0 表示服务端没接入（调用方可以退回真部署）。
+  if (m_pRequestHandler && m_pRequestHandler->ReloadConfig())
+    return 1;
+  return 0;
+}
+
+DWORD ServerImpl::OnShadowAction(WEASEL_IPC_COMMAND uMsg,
+                                 DWORD wParam,
+                                 DWORD lParam) {
+  // wParam = (动作 << 16) | 页内序号，lParam = 会话 id。
+  // 只有两个 DWORD 可用，动作和序号合到一个里；序号上限 65535 够用。
+  const int action = static_cast<int>(wParam >> 16);
+  const size_t index = static_cast<size_t>(wParam & 0xFFFF);
+  if (m_pRequestHandler) {
+    // 这里不往 channel 里写候选：客户端是「异步刷新」的，
+    // 写进去没人立刻读，会和下一次按键的响应串在一起。
+    // 客户端刷新时会用 ProcessKeyEvent(0) 主动要一次应答。
+    if (m_pRequestHandler->AdjustShadow(action, index, lParam))
+      return 1;
+  }
+  return 0;
+}
+
 DWORD ServerImpl::OnChangePage(WEASEL_IPC_COMMAND uMsg,
                                DWORD wParam,
                                DWORD lParam) {
@@ -412,6 +439,8 @@ void ServerImpl::HandlePipeMessage(PipeMessage pipe_msg, _Resp resp) {
   PIPE_MSG_HANDLE(WEASEL_IPC_HIGHLIGHT_CANDIDATE_ON_CURRENT_PAGE,
                   OnHighlightCandidateOnCurrentPage);
   PIPE_MSG_HANDLE(WEASEL_IPC_CHANGE_PAGE, OnChangePage);
+  PIPE_MSG_HANDLE(WEASEL_IPC_RELOAD_CONFIG, OnReloadConfig);
+  PIPE_MSG_HANDLE(WEASEL_IPC_SHADOW_ACTION, OnShadowAction);
   PIPE_MSG_HANDLE(WEASEL_IPC_TRAY_COMMAND, OnCommand);
   END_MAP_PIPE_MSG_HANDLE(result);
 

@@ -1,0 +1,18 @@
+LIBRARY qingshi_game.ime
+
+EXPORTS
+    ImeInquire
+    ImeConfigure
+    ImeConversionList
+    ImeRegisterWord
+    ImeUnregisterWord
+    ImeGetRegisterWordStyle
+    ImeEnumRegisterWord
+    ImeSelect
+    ImeSetActiveContext
+    ImeProcessKey
+    ImeToAsciiEx
+    NotifyIME
+    ImeEscape
+    ImeSetCompositionString
+    ImeDestroy

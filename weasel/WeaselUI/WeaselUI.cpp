@@ -2,11 +2,34 @@
 #include <WeaselUI.h>
 
 namespace weasel {
+
+// 候选调序回调（面板右键「固顶」用）。放在这里而不是 WeaselPanel.cpp：
+// 静态库里只有被引用到的 obj 才会被链接，面板那个 obj 平时不会被拉进来，
+// 定义在这里能保证符号一定存在。
+ShadowActionFunc g_shadow_action;
+ShadowRefreshFunc g_shadow_refresh;
+
+void SetGlobalShadowAction(const ShadowActionFunc& func) {
+  g_shadow_action = func;
+  // 诊断：确认服务端真的把回调注册进来了。
+  wchar_t dir[MAX_PATH] = {0};
+  if (GetTempPathW(MAX_PATH, dir) == 0)
+    return;
+  std::wstring path = std::wstring(dir) + L"qingshi-panel.log";
+  FILE* f = nullptr;
+  if (_wfopen_s(&f, path.c_str(), L"a, ccs=UTF-8") == 0 && f) {
+    fwprintf_s(f, L"[register] shadow action installed=%d\n",
+               g_shadow_action ? 1 : 0);
+    fclose(f);
+  }
+}
+
 // ----------------------------------------------------------------------------
 class UIImpl {
  public:
   WeaselPanel panel;
-  UIImpl(UI& ui) : panel(ui) {}
+  UI& ui_;
+  UIImpl(UI& ui) : panel(ui), ui_(ui) {}
   ~UIImpl() {}
   bool IsShown() const {
     return panel.IsWindow() && ::IsWindowVisible(panel.hwnd());
@@ -14,6 +37,9 @@ class UIImpl {
   void Refresh() {
     if (!panel.IsWindow())
       return;
+    // 每次刷新都同步一次最新样式：panel 构造时只拷贝了一份，
+    // 配置热更新（/reload）后不主动推过去的话，界面还停在旧样式上。
+    panel.SetStyle(ui_.style());
     panel.Refresh();
   }
   void RepositionPreview() {
@@ -69,6 +95,15 @@ void UI::Update(const Context& ctx, const Status& status) {
   Refresh();
 }
 void UI::Refresh() {
+  if (pimpl_) {
+    pimpl_->Refresh();
+  }
+}
+
+void UI::ForceRefresh() {
+  // 清掉「上次画的是什么」的缓存，让下一次 Update 一定走重建路径。
+  ctx_ = Context();
+  status_ = Status();
   if (pimpl_) {
     pimpl_->Refresh();
   }

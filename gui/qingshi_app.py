@@ -71,6 +71,9 @@ def main():
     if setup or uninstall:
         from installer_ui import InstallerWindow
         window = InstallerWindow(uninstall, preview)
+    elif '--settings' in sys.argv:
+        from wubi_settings import MainWindow
+        window = MainWindow()
     elif '--wizard' in sys.argv:
         from setup_wizard import SetupWizard
         window = SetupWizard()

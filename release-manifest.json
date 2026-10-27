@@ -1,15 +1,47 @@
 {
-  "version": "1.0.6",
+  "version": "1.0.7",
   "platform": "Windows 10/11 x64",
   "installer": {
     "name": "QingshiSetup.exe",
-    "size": 45581243,
-    "sha256": "2cbbad6223eb72d8d3c6db52578fe9709296ac1b339ca67c8e39c4651be219f6"
+    "size": 46286099,
+    "sha256": "94846a83a28f7663ec4f4b356be68f8daa80e48f8586632772361b2e18e77519"
   },
   "upstream_weasel": "82b50c9e9b9ee0bd31357db6f25ddc804546c7f7",
   "librime_binary_revision": "33e7814",
   "submodules": {
     "weasel/librime": "1c23358157934bd6e6d6981f0c0164f05393b497",
     "weasel/plum": "cab9ed35289f2022b6888503750d2dfb1851dbe0"
+  },
+  "engine": "Weasel / Rime",
+  "native": {
+    "WeaselServer.exe": {
+      "size": 2525184,
+      "sha256": "3587164aa7e1228b4968d9e8ac17d760899194c67bf11fcb18ce4cb2b6b46f44"
+    },
+    "WeaselDeployer.exe": {
+      "size": 1297920,
+      "sha256": "89fe5e9a106730345f14b0e91b97c5dbb3fa8acbfe71c6597f9fa2add0169541"
+    },
+    "weaselx64.dll": {
+      "size": 1214976,
+      "sha256": "bf676092820ae4643b21b0381febbcb2db8393eb2866952776577d51a60c1dae"
+    },
+    "qingshi_game.ime": {
+      "size": 678400,
+      "sha256": "61cab65a57e1553381b6f39203b6fc4c0447ae02c3df6b74f3655841487c302f"
+    },
+    "rime.dll": {
+      "size": 3739136,
+      "sha256": "86b4c7357d4c6d293ce5589b234d8859ca2ac30923a03bedfa3926eeaf97fb0b"
+    }
+  },
+  "validation": {
+    "installer_and_compatibility_tests": 21,
+    "payload_files": 68,
+    "native_imm_tests": "passed",
+    "engine_regression": "passed",
+    "packaged_qt": "passed",
+    "packaged_preview": "passed",
+    "lol_training_mode": "user-confirmed candidates and Chinese commit"
   }
 }

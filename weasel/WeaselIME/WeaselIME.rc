@@ -1,0 +1,31 @@
+#include <windows.h>
+
+LANGUAGE LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED
+1 VERSIONINFO
+ FILEVERSION 1,0,6,1
+ PRODUCTVERSION 1,0,6,1
+ FILEFLAGSMASK 0x3fL
+ FILEFLAGS VS_FF_PRIVATEBUILD
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_DRV
+ FILESUBTYPE VFT2_DRV_INPUTMETHOD
+BEGIN
+ BLOCK "StringFileInfo"
+ BEGIN
+  BLOCK "080404B0"
+  BEGIN
+   VALUE "CompanyName", "QingshiWubi\0"
+   VALUE "FileDescription", "Qingshi Wubi IMM compatibility test build\0"
+   VALUE "FileVersion", "1.0.6.1\0"
+   VALUE "InternalName", "qingshi_game\0"
+   VALUE "OriginalFilename", "qingshi_game.ime\0"
+   VALUE "ProductName", "QingshiWubi\0"
+   VALUE "ProductVersion", "1.0.6.1\0"
+   VALUE "PrivateBuild", "Local compatibility validation\0"
+  END
+ END
+ BLOCK "VarFileInfo"
+ BEGIN
+  VALUE "Translation", 0x0804, 1200
+ END
+END

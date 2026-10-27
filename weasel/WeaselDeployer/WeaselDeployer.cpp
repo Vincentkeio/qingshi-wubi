@@ -2,6 +2,7 @@
 //
 #include "stdafx.h"
 #include <WeaselUtility.h>
+#include <WeaselIPC.h>
 #include <fstream>
 #include <vector>
 #include "WeaselDeployer.h"
@@ -34,6 +35,7 @@ static int ShowHelp() {
                L"Usage: WeaselDeployer.exe [options]\n"
                L"/? or /help\t\t- Show this help message\n"
                L"/deploy\t\t- Update Workspace\n"
+               L"/reload\t\t- Reload user config without deploying\n"
                L"/dict\t\t- Manage dictionary\n"
                L"/dict list\t\t- List user dictionaries\n"
                L"/dict backup <dict>\t- Backup a user dictionary\n"
@@ -124,6 +126,31 @@ static int Run(int argc, wchar_t* argv[]) {
   if (args.size() == 1 &&
       (IsOption(args.front(), L"/?") || IsOption(args.front(), L"/help"))) {
     return ShowHelp();
+  }
+
+  // /reload：只让正在运行的服务重读用户配置（外观、按键、候选数、标点、
+  // 主题、候选调序表），**不跑部署、不初始化 rime**。
+  // 设置面板保存后走这条，毫秒级生效；改码表/词库才需要 /deploy。
+  if (args.size() == 1 && IsOption(args.front(), L"/reload")) {
+    weasel::Client client;
+    if (!client.Connect()) {
+      return 2;  // 服务没在跑
+    }
+    const bool ok = client.ReloadConfig();
+    client.Disconnect();
+    return ok ? 0 : 3;
+  }
+
+  // /pin <n>：把当前页第 n 个候选置顶（调试与自动化测试用）。
+  // 走 shadow 层，不部署、不重启。
+  if (args.size() == 2 && IsOption(args.front(), L"/pin")) {
+    weasel::Client client;
+    if (!client.Connect())
+      return 2;
+    const bool ok = client.AdjustShadow(0 /* WEASEL_SHADOW_PIN */,
+                                        static_cast<size_t>(_wtoi(args[1].c_str())));
+    client.Disconnect();
+    return ok ? 0 : 3;
   }
 
   Configurator configurator;

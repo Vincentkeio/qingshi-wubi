@@ -19,7 +19,7 @@ import winreg
 import zipfile
 
 APP_ID = 'QingshiWubi'
-VERSION = '1.0.6'
+VERSION = '1.0.7'
 APP_KEY = r'Software\QingshiWubi'
 RIME_KEY = r'Software\Rime\Weasel'
 UNINSTALL_KEY = r'Software\Microsoft\Windows\CurrentVersion\Uninstall\QingshiWubi'
@@ -31,6 +31,10 @@ CLASS_KEY = rf'Software\Classes\CLSID\{CLSID}'
 MARKER = '.qingshi-install.json'
 DATA_MARKER = '.qingshi-data.json'
 VIEWS = (winreg.KEY_WOW64_64KEY, winreg.KEY_WOW64_32KEY)
+# Keep native modules in the application's own system directory. Versioned
+# filenames allow upgrades while existing applications still hold the old DLL.
+SYSTEM_IME_DIR = Path(os.environ['WINDIR']) / 'System32' / 'IME' / APP_ID
+SYSTEM_IME_DLL = Path(os.environ['WINDIR']) / 'System32' / 'weaselx64.dll'
 
 
 def atomic_json(path, value):
@@ -95,6 +99,13 @@ class Registry:
         except FileNotFoundError:
             return []
 
+    def values(self, hive, key, view=winreg.KEY_WOW64_64KEY):
+        try:
+            with winreg.OpenKey(hive, key, 0, winreg.KEY_READ | view) as handle:
+                return [winreg.EnumValue(handle, i)[0] for i in range(winreg.QueryInfoKey(handle)[1])]
+        except FileNotFoundError:
+            return []
+
     def delete(self, hive, key, view=winreg.KEY_WOW64_64KEY):
         for child in self.children(hive, key, view):
             self.delete(hive, key + '\\' + child, view)
@@ -116,6 +127,10 @@ class Windows:
         self.reg = registry or Registry()
         self.pending = []
         self.leftover = []
+        # InstallLayoutOrTip 整表替换时被误删、随后补回来的其他输入法
+        self.restored_input_methods = []
+        from game_compat import GameIme
+        self.game_ime = GameIme(self.reg, self.schedule_delete)
 
     def command(self, arguments, timeout=180, env=None):
         result = subprocess.run([str(a) for a in arguments], timeout=timeout, env=env,
@@ -133,12 +148,74 @@ class Windows:
             args.append('/u')
         self.command([*args, dll], env=env)
 
+    def install_system_ime(self, source):
+        """把输入法 DLL 放进系统目录。
+
+        带反作弊的游戏只加载系统目录下的输入法 DLL，装在 Program Files 里
+        它们连加载都不会尝试（日志里看不到任何激活记录）。旧文件可能正被
+        进程加载着，删不掉就先改名让位。
+        """
+        no_reparse(SYSTEM_IME_DIR)
+        SYSTEM_IME_DIR.mkdir(parents=True, exist_ok=True)
+        target = SYSTEM_IME_DIR / ('weaselx64-' + uuid.uuid4().hex + '.dll')
+        shutil.copy2(source, target)
+        return target
+
+    def remove_system_ime(self):
+        """卸载时清掉系统目录里的副本；删不掉就排进重启删除队列。"""
+        no_reparse(SYSTEM_IME_DIR)
+        if SYSTEM_IME_DIR.exists():
+            for target in SYSTEM_IME_DIR.iterdir():
+                if target.name == 'weaselx64.dll' or re.fullmatch(r'weaselx64-[0-9a-f]{32}\.dll', target.name):
+                    try:
+                        target.unlink()
+                    except OSError:
+                        self.schedule_delete(target)
+
+    def install_game_ime(self, source):
+        self.game_ime.install(source)
+
+    def rollback_game_ime(self):
+        self.game_ime.rollback()
+
+    def finish_game_ime(self):
+        self.game_ime.finish()
+
+    def remove_game_ime(self):
+        self.game_ime.remove()
+
+    def input_method_entries(self):
+        """当前用户"中文(简体)"下的输入法列表（0804:... 条目）。"""
+        key = r'Control Panel\International\User Profile\zh-Hans-CN'
+        return {name: self.reg.get(winreg.HKEY_CURRENT_USER, key, name)
+                for name in self.reg.values(winreg.HKEY_CURRENT_USER, key)
+                if name.startswith('0804:')}
+
+    def add_input_method_entry(self, name, value=1):
+        self.reg.set(winreg.HKEY_CURRENT_USER,
+                     r'Control Panel\International\User Profile\zh-Hans-CN', name, value)
+
     def tip(self, remove=False):
+        """把本输入法加入/移出用户的输入法列表。
+
+        InstallLayoutOrTip 在部分 Windows 版本上是**整表替换**语义：只传自己
+        那一项，会把用户原有的其他输入法（例如微软拼音）一起清掉 —— 卸载之后
+        语言列表里就只剩我们一个，Win+Space 变成没东西可切，游戏里输入法一失效
+        就彻底没有兜底。这里先备份整张表，调用后把被清掉的条目补回去。
+        """
+        entry = f'0804:{CLSID}{PROFILE}'
+        before = self.input_method_entries()
         dll = ctypes.WinDLL('input.dll')
         function = dll.InstallLayoutOrTip
         function.argtypes = [wintypes.LPCWSTR, wintypes.DWORD]
         function.restype = wintypes.BOOL
-        if not function(f'0804:{CLSID}{PROFILE}', 1 if remove else 0):
+        success = function(entry, 1 if remove else 0)
+        after = self.input_method_entries()
+        for name, value in before.items():
+            if name != entry and name not in after:
+                self.add_input_method_entry(name, value)
+                self.restored_input_methods.append(name)
+        if not success:
             raise ctypes.WinError()
 
     def disarm_autostart(self, roots):
@@ -395,6 +472,9 @@ class Installer:
         dll = self.registered_dll()
         if not dll or below(dll, self.root):
             return None
+        if dll.resolve() == SYSTEM_IME_DLL.resolve() or below(dll, SYSTEM_IME_DIR):
+            # 我们自己的系统目录副本，不是别人装的输入法
+            return None
         # Older QingShi builds registered the right DLL and unique TSF class,
         # but some Windows builds omitted the profile Description value.
         # The branded module name plus the canonical Weasel install location
@@ -449,7 +529,7 @@ class Installer:
         with zipfile.ZipFile(self.source) as archive:
             entries = archive.namelist()
             hashes = json.loads(archive.read('checksums.json'))
-            required = {'runtime/WeaselServer.exe', 'runtime/WeaselDeployer.exe', 'runtime/weaselx64.dll', 'runtime/rime.dll'}
+            required = {'runtime/WeaselServer.exe', 'runtime/WeaselDeployer.exe', 'runtime/weaselx64.dll', 'runtime/rime.dll', 'runtime/qingshi_game.ime'}
             if not required.issubset(hashes):
                 raise RuntimeError('安装包缺少必要的输入法组件')
             if len(entries) != len(set(entries)) or set(entries) != set(hashes) | {'checksums.json'}:
@@ -501,6 +581,7 @@ class Installer:
         }.items():
             self.reg.set(winreg.HKEY_LOCAL_MACHINE, UNINSTALL_KEY, name, value)
         self.progress(15, '正在写入输入法与三套码表')
+        system_dll = None
         try:
             with zipfile.ZipFile(self.source) as archive:
                 for entry in archive.namelist():
@@ -525,7 +606,10 @@ class Installer:
             self.progress(35, '正在停止旧版输入法服务')
             self.system.stop([self.root] + ([legacy] if legacy else []))
             self.progress(45, '正在注册输入法')
-            self.system.register(runtime / 'weaselx64.dll')
+            # 游戏只加载系统目录下的输入法 DLL，所以放一份到 System32 并从那份注册。
+            self.system.install_game_ime(runtime / 'qingshi_game.ime')
+            system_dll = self.system.install_system_ime(runtime / 'weaselx64.dll')
+            self.system.register(system_dll)
             for view in VIEWS:
                 for name, value in {'WeaselRoot': str(runtime), 'InstallDir': str(self.root), 'ServerExecutable': 'WeaselServer.exe'}.items():
                     self.write(winreg.HKEY_LOCAL_MACHINE, RIME_KEY, name, value, view)
@@ -548,20 +632,29 @@ class Installer:
                         self.remove_value(hive, RUN_KEY, 'WeaselServer', view)
             self.shortcuts(target_exe)
             registered = self.registered_dll()
-            if not registered or registered.resolve() != (runtime / 'weaselx64.dll').resolve():
+            if not registered or registered.resolve() != system_dll.resolve():
                 raise RuntimeError('输入法注册结果不匹配，请重新安装。')
             self.system.stop([self.root] + ([legacy] if legacy else []))
+            self.system.finish_game_ime()
         except Exception:
+            self.system.rollback_game_ime()
             # Restore the previously active input method instead of leaving a half-registered new one.
             if old_dll and old_dll.is_file():
                 self.system.register(old_dll)
                 self.system.tip()
             else:
                 active = self.registered_dll()
-                if active and below(active, runtime):
+                if active and (below(active, runtime) or below(active, SYSTEM_IME_DIR)):
                     self.system.tip(remove=True)
                     self.system.register(active, remove=True)
             self.restore_registry()
+            if previous:
+                atomic_json(self.root / MARKER, previous)
+            if system_dll and system_dll.exists():
+                try:
+                    system_dll.unlink()
+                except OSError:
+                    self.system.schedule_delete(system_dll)
             raise
         self.progress(100, '安装完成')
         return {'ok': True, 'action': 'install', 'runtime': str(runtime), 'reboot': False}
@@ -685,13 +778,19 @@ class Installer:
         self.progress(22, '正在移除输入法注册与语言配置')
         active = self.registered_dll()
         if active:
-            if not any(below(active, root) for root in roots):
+            # 正常情况下注册指向 System32 里的副本（游戏只认那里），
+            # 旧版本则指向安装目录里的 DLL —— 两种都算我们的。
+            ours = any(below(active, root) for root in roots) or active.resolve() == SYSTEM_IME_DLL.resolve() or below(active, SYSTEM_IME_DIR)
+            if not ours:
                 raise RuntimeError('输入法注册已由其他程序接管，已停止卸载')
             self.system.tip(remove=True)
             self.system.register(active, remove=True)
         x86 = self.registered_dll(winreg.KEY_WOW64_32KEY)
         if x86 and x86.is_file() and any(below(x86, root) for root in roots):
             self.system.register(x86, remove=True, x86=True)
+        # 注册已经撤掉，系统目录里的副本也清掉，别给系统留垃圾。
+        self.system.remove_system_ime()
+        self.system.remove_game_ime()
         for view in VIEWS:
             for key in (CLASS_KEY, TIP_KEY):
                 self.reg.delete(winreg.HKEY_LOCAL_MACHINE, key, view)

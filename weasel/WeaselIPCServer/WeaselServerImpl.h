@@ -75,6 +75,9 @@ class ServerImpl : public CWindowImpl<ServerImpl, CWindow, ServerWinTraits>
                                           DWORD wParam,
                                           DWORD lParam);
   DWORD OnChangePage(WEASEL_IPC_COMMAND uMsg, DWORD wParam, DWORD lParam);
+  // 重读用户配置但不部署；候选调序（wParam=动作, lParam=页内序号）。
+  DWORD OnReloadConfig(WEASEL_IPC_COMMAND uMsg, DWORD wParam, DWORD lParam);
+  DWORD OnShadowAction(WEASEL_IPC_COMMAND uMsg, DWORD wParam, DWORD lParam);
 
  public:
   ServerImpl();

@@ -10,6 +10,11 @@
 #include <array>
 #include <vector>
 #include <regex>
+#include <algorithm>
+#include <cstdarg>
+#include <cstdio>
+#include <fstream>
+#include <set>
 #include <rime_api.h>
 
 #define TRANSPARENT_COLOR 0x00000000
@@ -17,6 +22,64 @@
 using namespace weasel;
 
 static RimeApi* rime_api;
+
+// ── 用户 custom 配置优先 ────────────────────────────────────────────────
+// Rime 的 `config_open("weasel")` 读的是**部署产物**，用户改 `weasel.custom.yaml`
+// 后不部署看不到新值。热更新（/reload）时把用户配置挂到 g_user_patch 上，
+// 下面几个读取函数会先查 `patch/<key>`，查不到再回落到部署产物 ——
+// 这样外观/按键/候选数/标点这类设置才能真正即时生效。
+static RimeConfig* g_user_patch = nullptr;
+
+// 调序相关的排查日志。glog 的级别在这台机器上被配置压住了，
+// 排查期间先用独立文件，能确定「执行到哪一步」就够。
+void ShadowTrace(const char* fmt, ...) {
+  static std::mutex trace_mutex;
+  std::lock_guard<std::mutex> lock(trace_mutex);
+  wchar_t dir[MAX_PATH] = {0};
+  if (GetTempPathW(MAX_PATH, dir) == 0)
+    return;
+  std::ofstream out(std::wstring(dir) + L"qingshi-shadow.log",
+                    std::ios::app | std::ios::binary);
+  if (!out)
+    return;
+  char buf[1024] = {0};
+  va_list ap;
+  va_start(ap, fmt);
+  vsnprintf(buf, sizeof(buf) - 1, fmt, ap);
+  va_end(ap);
+  out << buf << "\r\n";
+}
+
+static bool _GetBoolPatched(RimeConfig* config, const char* key, Bool* out) {
+  if (g_user_patch) {
+    std::string patched = std::string("patch/") + key;
+    if (rime_api->config_get_bool(g_user_patch, patched.c_str(), out))
+      return true;
+  }
+  return rime_api->config_get_bool(config, key, out);
+}
+
+static bool _GetIntPatched(RimeConfig* config, const char* key, int* out) {
+  if (g_user_patch) {
+    std::string patched = std::string("patch/") + key;
+    if (rime_api->config_get_int(g_user_patch, patched.c_str(), out))
+      return true;
+  }
+  return rime_api->config_get_int(config, key, out);
+}
+
+static bool _GetStrPatched(RimeConfig* config,
+                           const char* key,
+                           char* buffer,
+                           size_t size) {
+  if (g_user_patch) {
+    std::string patched = std::string("patch/") + key;
+    if (rime_api->config_get_string(g_user_patch, patched.c_str(), buffer, size))
+      return true;
+  }
+  return rime_api->config_get_string(config, key, buffer, size);
+}
+
 WeaselSessionId _GenerateNewWeaselSessionId(SessionStatusMap sm, DWORD pid) {
   if (sm.empty())
     return (WeaselSessionId)(pid + 1);
@@ -50,6 +113,18 @@ RimeWithWeaselHandler::RimeWithWeaselHandler(UI* ui)
   m_pid = (m_pid << (31 - msbit));
   LOG(INFO) << "setting up Rime traits";
   _Setup();
+  // 候选窗右键「固顶 / 取消固顶」直接落到 shadow 层：内存改规则 + 立刻重排，
+  // 不写词库、不跑部署器 —— 以前这两个菜单项走的是「改 custom_phrase + 重新部署」，
+  // 每次点都要等好几秒，就是用户说的「卡一下」。
+  if (m_ui) {
+    m_ui->SetShadowAction([this](size_t index, int action) {
+      AdjustShadow(action, index, m_active_session);
+    });
+  }
+  // 面板在 UI 里构造、回调在这里注册，用进程级全局最稳（见 WeaselUI.h 注释）。
+  SetGlobalShadowAction([this](size_t index, int action) {
+    AdjustShadow(action, index, m_active_session);
+  });
   LOG(INFO) << "RimeWithWeaselHandler constructed";
 }
 
@@ -283,6 +358,44 @@ BOOL RimeWithWeaselHandler::ProcessKeyEvent(KeyEvent keyEvent,
   if (m_disabled)
     return FALSE;
   RimeSessionId session_id = to_session_id(ipc_id);
+
+  // ── 候选调序生效时，选词键按「界面上看到的顺序」走 ──────────────────
+  // 重排只改了交给客户端的候选数组，引擎内部的顺序没变：空格上屏的是内部
+  // 第一个候选、数字键选的也是内部序号。不在这里换一次，用户按 1 拿到的是
+  // 重排前的那一个 —— 显示和实际选中的不一致，比不排序更糟。
+  if (!(keyEvent.mask & ibus::Modifier::RELEASE_MASK)) {
+    std::vector<int> order;
+    {
+      std::lock_guard<std::mutex> lock(m_page_mutex);
+      auto it = m_page_order.find(session_id);
+      if (it != m_page_order.end() && it->second.size() > 1)
+        order = it->second;
+    }
+    if (!order.empty()) {
+      const uint32_t kc = keyEvent.keycode;
+      const bool plain =
+          !(keyEvent.mask & (ibus::Modifier::SHIFT_MASK |
+                             ibus::Modifier::CONTROL_MASK |
+                             (1 << 3)));  // 1<<3 = Alt
+      size_t picked = static_cast<size_t>(-1);
+      if (plain && kc >= '1' && kc <= '9') {
+        const size_t idx = kc - '1';
+        if (idx < order.size())
+          picked = static_cast<size_t>(order[idx]);
+      } else if (plain && kc == 0x20) {
+        picked = static_cast<size_t>(order[0]);  // 空格 = 上屏界面上第一个
+      }
+      if (picked != static_cast<size_t>(-1)) {
+        ShadowTrace("[key] select display->orig %zu", picked);
+        rime_api->select_candidate_on_current_page(session_id, picked);
+        _Respond(ipc_id, eat);
+        _UpdateUI(ipc_id);
+        m_active_session = ipc_id;
+        return TRUE;
+      }
+    }
+  }
+
   Bool handled = rime_api->process_key(session_id, keyEvent.keycode,
                                        expand_ibus_modifier(keyEvent.mask));
   // vim_mode when keydown only
@@ -330,7 +443,8 @@ void RimeWithWeaselHandler::SelectCandidateOnCurrentPage(
              << ", index = " << index;
   if (m_disabled)
     return;
-  rime_api->select_candidate_on_current_page(to_session_id(ipc_id), index);
+  rime_api->select_candidate_on_current_page(to_session_id(ipc_id),
+                                             _ToOriginalIndex(ipc_id, index));
 }
 
 bool RimeWithWeaselHandler::HighlightCandidateOnCurrentPage(
@@ -340,7 +454,7 @@ bool RimeWithWeaselHandler::HighlightCandidateOnCurrentPage(
   DLOG(INFO) << "highlight candidate on current page, ipc_id = " << ipc_id
              << ", index = " << index;
   bool res = rime_api->highlight_candidate_on_current_page(
-      to_session_id(ipc_id), index);
+      to_session_id(ipc_id), _ToOriginalIndex(ipc_id, index));
   _Respond(ipc_id, eat);
   _UpdateUI(ipc_id);
   return res;
@@ -569,6 +683,393 @@ void RimeWithWeaselHandler::_UpdateUI(WeaselSessionId ipc_id) {
     m_message_label.clear();
     m_option_name.clear();
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 候选调序（shadow 层）
+//
+// 规则存在 <用户数据>\shadow\<方案>.yaml，形如：
+//     version: 1
+//     rules:
+//       "d":
+//         - "在"
+//         - "大"
+// 含义：打 d 时，「在」排第一、「大」排第二，其余候选保持原相对顺序。
+//
+// 三条设计约束（照抄清风的思路）：
+//   ① 不改原词库 —— 只在候选装配完之后重排，删掉这个文件就恢复原状；
+//   ② 不触发部署 —— 改完立刻重排并刷新，毫秒级；
+//   ③ 每个编码独立 —— d 的规则不影响 de。
+// ─────────────────────────────────────────────────────────────────────────────
+
+namespace {
+
+fs::path ShadowDir() {
+  // 放在用户数据目录根部，文件名 shadow_<方案>.yaml。
+  // 刻意不建子目录：librime 的 config id 用 `/` 分隔会解析失败，
+  // 用平铺命名才能直接 config_open("shadow_wubi86")。
+  return fs::path(WeaselUserDataPath());
+}
+
+fs::path ShadowFile(const std::string& schema_id) {
+  return ShadowDir() / (L"shadow_" + u8tow(schema_id) + L".yaml");
+}
+
+// YAML 字符串转义：只处理双引号与反斜杠，中文原样写。
+std::string QuoteYaml(const std::string& s) {
+  std::string out = "\"";
+  for (char c : s) {
+    if (c == '"' || c == '\\')
+      out.push_back('\\');
+    out.push_back(c);
+  }
+  out.push_back('"');
+  return out;
+}
+
+}  // namespace
+
+void RimeWithWeaselHandler::_LoadShadow(const std::string& schema_id) {
+  // 直接解析文件，不走 librime 的 config API：那个 API 的 config id 规则
+  // （会在 user/shared/build 三处查找、还会自动套 custom patch）对一个
+  // 我们自己维护的简单两列表格来说太重，也容易踩到「找不到文件却静默成功」。
+  ShadowRules rules;
+  const auto path = ShadowFile(schema_id);
+  std::ifstream in(path, std::ios::binary);
+  if (in) {
+    const auto unquote = [](std::string s) {
+      if (s.size() >= 2 && s.front() == '"' && s.back() == '"') {
+        s = s.substr(1, s.size() - 2);
+        std::string out;
+        for (size_t i = 0; i < s.size(); ++i) {
+          if (s[i] == '\\' && i + 1 < s.size()) {
+            out.push_back(s[++i]);
+          } else {
+            out.push_back(s[i]);
+          }
+        }
+        return out;
+      }
+      return s;
+    };
+    std::string line;
+    std::string current_code;
+    while (std::getline(in, line)) {
+      if (!line.empty() && line.back() == '\r')
+        line.pop_back();
+      const size_t first = line.find_first_not_of(" \t");
+      if (first == std::string::npos)
+        continue;
+      std::string s = line.substr(first);
+      if (s.empty() || s[0] == '#')
+        continue;
+      if (s.rfind("- ", 0) == 0) {
+        const std::string word = unquote(s.substr(2));
+        if (!current_code.empty() && !word.empty())
+          rules[current_code].push_back(word);
+        continue;
+      }
+      const size_t colon = s.find(':');
+      if (colon == std::string::npos)
+        continue;
+      const std::string key = unquote(s.substr(0, colon));
+      if (key.empty() || key == "rules" || key == "version")
+        continue;
+      current_code = key;
+    }
+  }
+  std::lock_guard<std::mutex> lock(m_shadow_mutex);
+  const size_t n = rules.size();
+  m_shadow[schema_id] = std::move(rules);
+  m_shadow_loaded.insert(schema_id);
+  LOG(ERROR) << "[shadow] loaded: " << schema_id << " rules=" << n
+             << " path=" << path.u8string();
+}
+
+bool RimeWithWeaselHandler::_SaveShadow(const std::string& schema_id) {
+  std::error_code ec;
+  fs::create_directories(ShadowDir(), ec);
+  const auto path = ShadowFile(schema_id);
+  std::ofstream out(path, std::ios::binary | std::ios::trunc);
+  if (!out)
+    return false;
+  out << "# 青石五笔 候选调序\n"
+      << "# 由输入法在候选上「置顶」时自动写入；删掉对应编码即恢复默认顺序。\n"
+      << "version: 1\n"
+      << "rules:\n";
+  {
+    std::lock_guard<std::mutex> lock(m_shadow_mutex);
+    auto sit = m_shadow.find(schema_id);
+    if (sit != m_shadow.end()) {
+      for (const auto& kv : sit->second) {
+        if (kv.second.empty())
+          continue;
+        out << "  " << QuoteYaml(kv.first) << ":\n";
+        for (const auto& word : kv.second)
+          out << "    - " << QuoteYaml(word) << "\n";
+      }
+    }
+  }
+  out.flush();
+  return out.good();
+}
+
+std::string RimeWithWeaselHandler::_CurrentCode(RimeContext& ctx) {
+  // 五笔方案的 preedit 就是编码。一旦出现非 ASCII（说明已经转成汉字显示），
+  // 就拿不到原始编码了，此时放弃调序 —— 宁可不动，也不要按错误的码去重排。
+  std::string code;
+  if (!ctx.composition.preedit)
+    return code;
+  for (int i = 0; i < ctx.composition.length; ++i) {
+    const unsigned char c = static_cast<unsigned char>(ctx.composition.preedit[i]);
+    if (c == '\0' || c == ' ')
+      break;
+    if (c >= 0x80)
+      return std::string();
+    code.push_back(static_cast<char>(c));
+  }
+  return code;
+}
+
+std::vector<int> RimeWithWeaselHandler::_ApplyShadow(const std::string& schema_id,
+                                                     const std::string& code,
+                                                     RimeContext& ctx) {
+  std::vector<int> order;
+  const int n = ctx.menu.num_candidates;
+  ShadowTrace("[apply] enter schema=%s code=%s n=%d ptr=%p", schema_id.c_str(),
+              code.c_str(), n, (void*)ctx.menu.candidates);
+  if (n <= 0 || code.empty() || schema_id.empty() || !ctx.menu.candidates)
+    return order;
+
+  std::vector<std::string> wanted;
+  {
+    std::lock_guard<std::mutex> lock(m_shadow_mutex);
+    auto sit = m_shadow.find(schema_id);
+    if (sit == m_shadow.end())
+      return order;
+    auto rit = sit->second.find(code);
+    if (rit == sit->second.end())
+      return order;
+    wanted = rit->second;
+  }
+  if (wanted.empty())
+    return order;
+
+  std::vector<int> picked;
+  std::vector<bool> used(n, false);
+  for (const auto& want : wanted) {
+    for (int i = 0; i < n; ++i) {
+      if (used[i] || !ctx.menu.candidates[i].text)
+        continue;
+      if (want == ctx.menu.candidates[i].text) {
+        picked.push_back(i);
+        used[i] = true;
+        break;
+      }
+    }
+  }
+  if (picked.empty())
+    return order;  // 规则里的词这一页没有，原样显示
+
+  order.reserve(n);
+  for (int i : picked)
+    order.push_back(i);
+  for (int i = 0; i < n; ++i)
+    if (!used[i])
+      order.push_back(i);
+
+  std::vector<RimeCandidate> snapshot(ctx.menu.candidates,
+                                     ctx.menu.candidates + n);
+  for (int i = 0; i < n; ++i)
+    ctx.menu.candidates[i] = snapshot[order[i]];
+
+  LOG(ERROR) << "[shadow] applied: schema=" << schema_id << " code=" << code
+            << " pinned=" << picked.size();
+  ShadowTrace("[apply] reordered picked=%zu first=%s", picked.size(),
+              ctx.menu.candidates[0].text ? ctx.menu.candidates[0].text : "?");
+  return order;
+}
+
+void RimeWithWeaselHandler::_LoadShadowForSession(RimeSessionId session_id,
+                                                  const std::string& schema_id) {
+  (void)session_id;  // 目前按方案缓存，与会话无关
+  if (schema_id.empty())
+    return;
+  bool need = false;
+  {
+    std::lock_guard<std::mutex> lock(m_shadow_mutex);
+    need = m_shadow_loaded.find(schema_id) == m_shadow_loaded.end();
+  }
+  if (need)
+    _LoadShadow(schema_id);
+}
+
+size_t RimeWithWeaselHandler::_ToOriginalIndex(WeaselSessionId ipc_id,
+                                               size_t display_index) {
+  const RimeSessionId session_id = to_session_id(ipc_id);
+  std::lock_guard<std::mutex> lock(m_page_mutex);
+  auto it = m_page_order.find(session_id);
+  if (it != m_page_order.end() && display_index < it->second.size())
+    return static_cast<size_t>(it->second[display_index]);
+  return display_index;
+}
+
+bool RimeWithWeaselHandler::ReloadConfig() {  if (m_disabled) {
+    LOG(INFO) << "ReloadConfig skipped: handler disabled";
+    return false;
+  }
+  RimeConfig config = {NULL};
+  if (!rime_api->config_open("weasel", &config)) {
+    LOG(ERROR) << "ReloadConfig: cannot open weasel config";
+    return false;
+  }
+  // 用户 custom 配置挂上去：_RimeGet* 系列会优先读 patch/<key>。
+  // 注意用 config_open("weasel.custom") 而不是 user_config_open("weasel")：
+  // 后者只找 user_dir 里的 weasel.yaml（我们这里是 weasel.custom.yaml）。
+  RimeConfig user_config = {NULL};
+  const bool has_user = rime_api->config_open("weasel.custom", &user_config);
+  if (has_user)
+    g_user_patch = &user_config;
+
+  if (m_ui) {
+    _UpdateUIStyle(&config, m_ui, true);
+    _UpdateShowNotifications(&config, true);
+    m_current_dark_mode = IsUserDarkMode();
+    const int BUF_SIZE = 255;
+    char buffer[BUF_SIZE + 1] = {0};
+    const char* scheme_key =
+        m_current_dark_mode ? "style/color_scheme_dark" : "style/color_scheme";
+    if (_GetStrPatched(&config, scheme_key, buffer, BUF_SIZE)) {
+      _UpdateUIStyleColor(&config, m_ui->style(), std::string(buffer));
+    }
+    m_base_style = m_ui->style();
+    m_ui->ForceRefresh();
+  }
+
+  Bool global_ascii = false;
+  if (rime_api->config_get_bool(&config, "global_ascii", &global_ascii))
+    m_global_ascii_mode = !!global_ascii;
+  if (!rime_api->config_get_int(&config, "show_notifications_time",
+                                &m_show_notifications_time))
+    m_show_notifications_time = 1200;
+  m_app_options.clear();
+  _LoadAppOptions(&config, m_app_options);
+  if (has_user) {
+    g_user_patch = nullptr;
+    rime_api->config_close(&user_config);
+  }
+  rime_api->config_close(&config);
+
+  // 方案级 UI 设置（配色、图标、inline_preedit）也要重读：
+  // 清掉缓存标记，让下一次 _GetStatus 重新加载。
+  m_last_schema_id.clear();
+  // 候选调序表同样重读（用户可能直接编辑了 shadow 文件）。
+  {
+    std::lock_guard<std::mutex> lock(m_shadow_mutex);
+    m_shadow_loaded.clear();
+    m_shadow.clear();
+  }
+  m_page_order.clear();
+  m_page_code.clear();
+
+  for (auto& pair : m_session_status_map) {
+    SessionStatus& status = pair.second;
+    if (status.session_id)
+      _LoadSchemaSpecificSettings(pair.first, std::string());
+  }
+
+  _UpdateUI(0);
+  LOG(ERROR) << "[reload] done (no deployment)";
+  return true;
+}
+
+bool RimeWithWeaselHandler::AdjustShadow(int action,
+                                         size_t index,
+                                         WeaselSessionId ipc_id,
+                                         EatLine eat) {
+  // 从命令行（WeaselDeployer /pin）调进来时没有会话 id，退回最近活跃的那个。
+  if (!ipc_id)
+    ipc_id = m_active_session;
+  RimeSessionId session_id = to_session_id(ipc_id);
+  if (!session_id) {
+    ShadowTrace("[shadow] adjust: no session (ipc_id=0)");
+    return false;
+  }
+
+  // 界面上看到的序号是重排后的，先换回引擎里的原始索引。
+  size_t original = index;
+  {
+    std::lock_guard<std::mutex> lock(m_page_mutex);
+    auto order_it = m_page_order.find(session_id);
+    if (order_it != m_page_order.end() && index < order_it->second.size())
+      original = static_cast<size_t>(order_it->second[index]);
+  }
+
+  RIME_STRUCT(RimeStatus, status);
+  std::string schema_id;
+  if (rime_api->get_status(session_id, &status)) {
+    if (status.schema_id)
+      schema_id = status.schema_id;
+    rime_api->free_status(&status);
+  }
+  if (schema_id.empty())
+    return false;
+
+  RIME_STRUCT(RimeContext, ctx);
+  if (!rime_api->get_context(session_id, &ctx))
+    return false;
+  const std::string code = _CurrentCode(ctx);
+  std::string text;
+  if (original < static_cast<size_t>(ctx.menu.num_candidates) &&
+      ctx.menu.candidates[original].text) {
+    text = ctx.menu.candidates[original].text;
+  }
+  rime_api->free_context(&ctx);
+
+  if (code.empty() || text.empty()) {
+    LOG(ERROR) << "[shadow] adjust: no code/text, ignored";
+    return false;
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(m_shadow_mutex);
+    ShadowRules& rules = m_shadow[schema_id];
+    auto& list = rules[code];
+    list.erase(std::remove(list.begin(), list.end(), text), list.end());
+    if (action >= 100) {
+      // 「调整位置」：插到置顶区第 (action-100) 位，越界就追加到末尾
+      size_t pos = static_cast<size_t>(action - 100);
+      if (pos > 0)
+        --pos;
+      if (pos > list.size())
+        pos = list.size();
+      list.insert(list.begin() + pos, text);
+    } else if (action == WEASEL_SHADOW_PIN) {
+      list.insert(list.begin(), text);
+    }
+    ShadowTrace("[shadow] adjust action=%d code=%s word=%s list=%zu", action,
+                code.c_str(), text.c_str(), list.size());
+    if (list.empty())
+      rules.erase(code);
+    m_shadow_loaded.insert(schema_id);
+  }
+  _SaveShadow(schema_id);
+  LOG(ERROR) << "[shadow] adjust: action=" << action << " code=" << code
+            << " word=" << text;
+
+  // 立刻按新规则重排并刷新，不需要重启、不需要部署。
+  //
+  // ★ 关键：候选窗在**应用进程**（TSF）里，服务端只持有数据。
+  // 光调 _UpdateUI 只刷新服务端自己那个没人看的 UI，界面上不会有任何变化。
+  // 必须通过 eat 把重排后的候选回给客户端，由它更新本地窗口。
+  if (eat) {
+    _Respond(ipc_id, eat);
+  } else {
+    _UpdateUI(ipc_id);
+  }
+  if (m_ui)
+    m_ui->Show();
+  return true;
 }
 
 void RimeWithWeaselHandler::_LoadSchemaSpecificSettings(
@@ -811,6 +1312,32 @@ bool RimeWithWeaselHandler::_Respond(WeaselSessionId ipc_id, EatLine eat) {
     bool has_candidates = ctx.menu.num_candidates > 0;
     CandidateInfo cinfo;
     if (has_candidates) {
+      // [探针] 只观察不改动：确认 schema_id / 编码 / 规则加载是否到位
+      std::string probe_schema;
+      RIME_STRUCT(RimeStatus, probe_status);
+      if (rime_api->get_status(session_id, &probe_status)) {
+        if (probe_status.schema_id)
+          probe_schema = probe_status.schema_id;
+        rime_api->free_status(&probe_status);
+      }
+      const std::string probe_code = _CurrentCode(ctx);
+      _LoadShadowForSession(session_id, probe_schema);
+      const std::vector<int> order = _ApplyShadow(probe_schema, probe_code, ctx);
+      {
+        std::lock_guard<std::mutex> lock(m_page_mutex);
+        m_page_order[session_id] = order;
+        m_page_code[session_id] = probe_code;
+      }
+      {
+        std::lock_guard<std::mutex> lock(m_shadow_mutex);
+        auto it = m_shadow.find(probe_schema);
+        ShadowTrace("[respond] schema=%s code=%s n=%d loaded=%d rules=%zu order=%zu",
+                    probe_schema.c_str(), probe_code.c_str(),
+                    ctx.menu.num_candidates,
+                    (int)m_shadow_loaded.count(probe_schema),
+                    it == m_shadow.end() ? 0 : it->second.size(),
+                    order.size());
+      }
       _GetCandidateInfo(cinfo, ctx);
     }
     if (is_composing) {
@@ -1020,7 +1547,7 @@ void _RimeGetBool(RimeConfig* config,
                   const T& trueValue = true,
                   const T& falseValue = false) {
   Bool tempb = False;
-  if (rime_api->config_get_bool(config, key, &tempb) || cond)
+  if (_GetBoolPatched(config, key, &tempb) || cond)
     value = (!!tempb) ? trueValue : falseValue;
 }
 // parse string option to T type value, with fallback
@@ -1031,7 +1558,7 @@ void _RimeParseStringOptWithFallback(RimeConfig* config,
                                      const Array<T, N>& arr,
                                      const T& fallback) {
   char str_buff[256] = {0};
-  if (rime_api->config_get_string(config, key, str_buff, 255)) {
+  if (_GetStrPatched(config, key, str_buff, 255)) {
     for (size_t i = 0; i < N; ++i) {
       if (strcmp(arr[i].first, str_buff) == 0) {
         value = arr[i].second;
@@ -1050,13 +1577,13 @@ void _RimeGetIntStr(RimeConfig* config,
                     const void* fb_value = nullptr,
                     const std::function<void(T&)>& func = nullptr) {
   if constexpr (std::is_same<T, int>::value) {
-    if (!rime_api->config_get_int(config, key, &value) && fb_key != 0)
-      rime_api->config_get_int(config, fb_key, &value);
+    if (!_GetIntPatched(config, key, &value) && fb_key != 0)
+      _GetIntPatched(config, fb_key, &value);
   } else if constexpr (std::is_same<T, std::wstring>::value) {
     const int BUF_SIZE = 2047;
     char buffer[BUF_SIZE + 1] = {0};
-    if (rime_api->config_get_string(config, key, buffer, BUF_SIZE) ||
-        rime_api->config_get_string(config, fb_key, buffer, BUF_SIZE)) {
+    if (_GetStrPatched(config, key, buffer, BUF_SIZE) ||
+        (fb_key != 0 && _GetStrPatched(config, fb_key, buffer, BUF_SIZE))) {
       value = u8tow(buffer);
     } else if (fb_value) {
       value = *(T*)fb_value;
@@ -1101,8 +1628,8 @@ void RimeWithWeaselHandler::_UpdateShowNotifications(RimeConfig* config,
     m_show_notifications_base.clear();
   m_show_notifications.clear();
 
-  if (rime_api->config_get_bool(config, "show_notifications",
-                                &show_notifications)) {
+  if (_GetBoolPatched(config, "show_notifications",
+                      &show_notifications)) {
     // config read as bool, for global all on or off
     if (show_notifications)
       m_show_notifications["always"] = true;
@@ -1501,6 +2028,23 @@ void RimeWithWeaselHandler::_GetContext(Context& weasel_context,
       }
     }
     if (ctx.menu.num_candidates) {
+      // 候选调序：先按 shadow 规则重排，再把结果交给 UI。
+      // 必须在 _GetCandidateInfo 之前做 —— 那个函数按数组顺序生成候选与标签。
+      RIME_STRUCT(RimeStatus, st);
+      std::string schema_id;
+      if (rime_api->get_status(session_id, &st)) {
+        if (st.schema_id)
+          schema_id = st.schema_id;
+        rime_api->free_status(&st);
+      }
+      _LoadShadowForSession(session_id, schema_id);
+      const std::string code = _CurrentCode(ctx);
+      std::vector<int> order = _ApplyShadow(schema_id, code, ctx);
+      {
+        std::lock_guard<std::mutex> lock(m_page_mutex);
+        m_page_code[session_id] = code;
+        m_page_order[session_id] = std::move(order);
+      }
       CandidateInfo& cinfo(weasel_context.cinfo);
       _GetCandidateInfo(cinfo, ctx);
     }

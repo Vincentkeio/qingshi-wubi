@@ -103,6 +103,20 @@ bool ClientImpl::ChangePage(bool backward) {
   return ret != 0;
 }
 
+bool ClientImpl::ReloadConfig() {
+  // 全局操作：不要求当前有活跃会话（设置面板可能在没有输入框时保存）。
+  LRESULT ret = _SendMessage(WEASEL_IPC_RELOAD_CONFIG, 0, 0);
+  return ret != 0;
+}
+
+bool ClientImpl::AdjustShadow(int action, size_t index) {
+  // 不强制要求活跃会话：命令行工具（WeaselDeployer /pin）也会调，
+  // 服务端在没有 session 时会退回最近活跃的那个。
+  DWORD packed = (static_cast<DWORD>(action) << 16) | (static_cast<DWORD>(index) & 0xFFFF);
+  LRESULT ret = _SendMessage(WEASEL_IPC_SHADOW_ACTION, packed, session_id);
+  return ret != 0;
+}
+
 void ClientImpl::UpdateInputPosition(RECT const& rc) {
   if (!_Active())
     return;
@@ -242,6 +256,14 @@ bool Client::HighlightCandidateOnCurrentPage(size_t index) {
 
 bool Client::ChangePage(bool backward) {
   return m_pImpl->ChangePage(backward);
+}
+
+bool Client::ReloadConfig() {
+  return m_pImpl->ReloadConfig();
+}
+
+bool Client::AdjustShadow(int action, size_t index) {
+  return m_pImpl->AdjustShadow(action, index);
 }
 
 void Client::UpdateInputPosition(RECT const& rc) {

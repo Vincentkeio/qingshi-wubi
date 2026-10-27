@@ -3,10 +3,21 @@
 #include "WeaselTSF.h"
 #include <KeyEvent.h>
 #include "CandidateList.h"
+#include "QingshiDiag.h"
 
 static weasel::KeyEvent prevKeyEvent;
 static BOOL prevfEaten = FALSE;
 static int keyCountToSimulate = 0;
+
+// 按键为什么被放行给应用 —— 每秒最多记一条，用来定位"某些程序里打不了字"。
+static void DiagKeyPassthrough(const wchar_t* reason) {
+  static ULONGLONG next_allowed = 0;
+  const ULONGLONG now = ::GetTickCount64();
+  if (now < next_allowed)
+    return;
+  next_allowed = now + 1000;
+  qingshi::diag::Log(L"key passthrough: %s", reason);
+}
 
 // 青石：Shift + 字母 直接输出（不进编码）。开关存在注册表，默认开启。
 static bool QingshiShiftLetterDirect() {
@@ -26,12 +37,15 @@ void WeaselTSF::_ProcessKeyEvent(WPARAM wParam, LPARAM lParam, BOOL* pfEaten) {
   // when _IsKeyboardDisabled don't eat the key,
   // when keyboard closable and keyboard closed, don't eat the key
   if ((_isToOpenClose && !_IsKeyboardOpen()) || _IsKeyboardDisabled()) {
+    DiagKeyPassthrough(_isToOpenClose && !_IsKeyboardOpen() ? L"keyboard-closed"
+                                                            : L"keyboard-disabled");
     *pfEaten = FALSE;
     return;
   }
 
   // if server connection is Not OK, don't eat it.
   if (!_EnsureServerConnected()) {
+    DiagKeyPassthrough(L"no-server");
     *pfEaten = FALSE;
     return;
   }
@@ -58,6 +72,22 @@ void WeaselTSF::_ProcessKeyEvent(WPARAM wParam, LPARAM lParam, BOOL* pfEaten) {
     /* Unknown key event */
     *pfEaten = FALSE;
   } else {
+    // ── 候选调序快捷键 ────────────────────────────────────────────
+    // Ctrl+数字   = 把该候选置顶到本编码第一位
+    // Ctrl+Shift+数字 = 撤掉本编码的全部置顶
+    // 规则写到 shadow_<方案>.yaml，服务端立刻重排并刷新，不部署、不重启。
+    if (_status.composing && !(ke.mask & ibus::RELEASE_MASK) &&
+        (ke.mask & ibus::CONTROL_MASK) && ke.keycode >= '1' &&
+        ke.keycode <= '9') {
+      const int action = (ke.mask & ibus::SHIFT_MASK) ? WEASEL_SHADOW_UNPIN
+                                                      : WEASEL_SHADOW_PIN;
+      const size_t idx = static_cast<size_t>(ke.keycode - '1');
+      if (m_client.AdjustShadow(action, idx)) {
+        *pfEaten = TRUE;
+        return;
+      }
+    }
+
     // cheet key code when vertical auto reverse happened, swap up and down
     if (_cand->GetIsReposition()) {
       if (ke.keycode == ibus::Up)
@@ -65,8 +95,38 @@ void WeaselTSF::_ProcessKeyEvent(WPARAM wParam, LPARAM lParam, BOOL* pfEaten) {
       else if (ke.keycode == ibus::Down)
         ke.keycode = ibus::Up;
     }
+    // 候选窗被本地重排过：空格 / 数字键按「界面上的顺序」选词。
+    // 不换算的话显示是第一位的「仰泳」，按空格上屏的却是引擎里的第一个「你」。
+    if (_cand && _cand->has_display_order() && _status.composing &&
+        !(ke.mask & ibus::RELEASE_MASK) &&
+        !(ke.mask & (ibus::SHIFT_MASK | ibus::CONTROL_MASK | (1 << 3)))) {
+      size_t display_index = static_cast<size_t>(-1);
+      if (ke.keycode == 0x20) {
+        display_index = 0;   // 空格 = 上屏界面上第一个
+      } else if (ke.keycode >= '1' && ke.keycode <= '9') {
+        const size_t d = static_cast<size_t>(ke.keycode - '1');
+        if (d < _cand->display_order_size())
+          display_index = d;
+      } else if (ke.keycode == 0x3B /* ; */ || ke.keycode == 0x27 /* ' */) {
+        // 方案里 alternative_select_keys: "1;'" —— 分号选第 2 位、单引号选第 3 位。
+        // 这两个键不走 process_key 的数字选词路径，必须在这里换算，否则
+        // 显示重排了、按 ; 拿到的还是引擎里的第 2 个。
+        const size_t d = (ke.keycode == 0x3B) ? 1 : 2;
+        if (d < _cand->display_order_size())
+          display_index = d;
+      }
+      if (display_index != static_cast<size_t>(-1)) {
+        const size_t orig = _cand->display_to_original(display_index);
+        m_client.SelectCandidateOnCurrentPage(orig);
+        *pfEaten = TRUE;
+        return;
+      }
+    }
+
     if (!keyCountToSimulate)
       *pfEaten = (BOOL)m_client.ProcessKeyEvent(ke);
+    if (!*pfEaten && !keyCountToSimulate)
+      DiagKeyPassthrough(L"rime-declined");
 
     if (ke.keycode == ibus::Caps_Lock) {
       if (prevKeyEvent.keycode == ibus::Caps_Lock && prevfEaten == TRUE &&

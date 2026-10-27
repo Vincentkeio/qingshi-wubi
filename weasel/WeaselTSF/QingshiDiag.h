@@ -61,9 +61,10 @@ inline void Write(const wchar_t* text) {
                                           nullptr, nullptr);
   if (bytes <= 1)
     return;
-  std::string utf8(static_cast<size_t>(bytes - 1), '\0');
+  std::string utf8(static_cast<size_t>(bytes), '\0');
   ::WideCharToMultiByte(CP_UTF8, 0, text, -1, &utf8[0], bytes, nullptr,
                         nullptr);
+  utf8.pop_back();
 
   FILE* file = nullptr;
   if (_wfopen_s(&file, path.c_str(), L"ab") != 0 || file == nullptr)

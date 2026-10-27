@@ -48,6 +48,11 @@ class CCandidateList : public ITfIntegratableCandidateListUIElement,
 
   /* Update */
   void UpdateUI(const weasel::Context& ctx, const weasel::Status& status);
+  // 只重绘本地候选窗，不回调宿主的 ITfCandidateListUIElement。
+  // 固顶后的即时刷新用它 —— _UpdateUIElement 会重入宿主的 COM 对象，
+  // 在右键/中键回调里调它会直接把宿主带崩。
+  void UpdateLocalOnly(const weasel::Context& ctx,
+                       const weasel::Status& status);
   void UpdateStyle(const weasel::UIStyle& sty);
   void UpdateInputPosition(RECT const& rc);
   void Destroy();
@@ -64,6 +69,25 @@ class CCandidateList : public ITfIntegratableCandidateListUIElement,
   }
 
   weasel::UIStyle& style();
+  weasel::Context& ctx() { return _ui->ctx(); }
+  // 纯本地重排：把 word 挪到第一位，只重排布局 + 重绘。
+  // 不走 _UpdateUI / _UpdateUIElement，不碰宿主 COM，不会带崩宿主。
+  void ReorderLocal(const std::wstring& word);
+  // 把 word 挪到第 target 位（0 基），同样只重绘不回调宿主
+  void MoveLocal(const std::wstring& word, size_t target);
+  // 恢复到引擎原始顺序（取消固顶用）
+  void RestoreLocal();
+  // 本地重排后，界面上的第 i 个候选对应引擎里的第几个。
+  // 空格 / 数字键必须按它换算，否则显示和实际选中的不一致。
+  bool has_display_order() const { return !m_display_order.empty(); }
+  size_t display_order_size() const { return m_display_order.size(); }
+  size_t display_to_original(size_t i) const {
+    return i < m_display_order.size() ? m_display_order[i] : i;
+  }
+  // 调序后延迟刷新：投递消息给候选窗，等回到消息循环再取新候选。
+  void RequestShadowRefresh();
+  void DoShadowRefresh();
+  HWND hwnd() const { return _ui ? _ui->hwnd() : nullptr; }
 
  private:
   // void _UpdateOwner();
@@ -97,8 +121,14 @@ class CCandidateList : public ITfIntegratableCandidateListUIElement,
   bool _hostDeclined = false;
   bool _hostConsumed = false;
   bool _localUI = false;
+  // UILess 线程（游戏常走这条路）：宿主会来读候选数据，由宿主自己绘制。
+  bool _uiLess = false;
   DWORD _updateSeq = 0;
   weasel::UIStyle _style;
+  // 显示位置 → 引擎原始索引；空表示没重排过
+  std::vector<size_t> m_display_order;
+  // 第一次本地重排前的候选快照，取消固顶时用来还原
+  std::vector<weasel::Text> m_original_candies;
   bool _ui_warmed_up = false;
 
   com_ptr<ITfContext> _pContextDocument;

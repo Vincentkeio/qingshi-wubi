@@ -17,7 +17,8 @@ from PyQt6.QtWidgets import (
     QComboBox, QLineEdit, QListWidget, QListWidgetItem, QStackedWidget,
     QGroupBox, QFrame, QMessageBox, QFileDialog, QScrollArea, QSlider,
     QSizePolicy, QSpacerItem, QTextEdit, QDialog, QDialogButtonBox, QTabWidget,
-    QTableWidget, QTableWidgetItem, QHeaderView, QInputDialog, QAbstractItemView
+    QTableWidget, QTableWidgetItem, QHeaderView, QInputDialog, QAbstractItemView,
+    QProgressBar
 )
 
 try:
@@ -26,7 +27,7 @@ except ImportError:
     yaml = None
 
 APP_NAME = "青石五笔输入法"
-APP_VER = "1.0.6"
+APP_VER = "1.0.7"
 from app_paths import user_directory, runtime_directories
 RIME_DIR = user_directory()
 WEASEL_CANDIDATES = runtime_directories()
@@ -40,6 +41,44 @@ SCHEMAS = [
 # ---------------- 样式 ----------------
 from ui_theme import QSS, apply_theme
 from navigation import Navigation
+
+
+class BusyDialog(QDialog):
+    """耗时操作（重新部署 / 重启服务）期间的等待窗口。
+
+    以前这些操作是在 UI 线程里同步跑的，窗口整个白掉、系统标"无响应"，
+    用户以为卡死。现在至少给一个明确的"正在做什么"。
+    默认保存只走热重载（毫秒级），不会弹这个。
+    """
+
+    def __init__(self, parent, title='正在应用', message='正在重新编译词库…',
+                 hint='这一步通常需要几秒到十几秒，期间输入法暂时不可用。'):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.setModal(True)
+        self.setFixedWidth(400)
+        self.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(24, 22, 24, 20)
+        lay.setSpacing(10)
+
+        head = QLabel(message)
+        head.setObjectName('sectionH1')
+        lay.addWidget(head)
+
+        sub = QLabel(hint)
+        sub.setObjectName('hint')
+        sub.setWordWrap(True)
+        lay.addWidget(sub)
+
+        bar = QProgressBar()
+        bar.setRange(0, 0)          # 不确定进度：来回滚动
+        bar.setFixedHeight(6)
+        bar.setTextVisible(False)
+        lay.addWidget(bar)
+
+    def finish(self):
+        self.accept()
 
 
 # ---------------- 配置读写 ----------------
@@ -399,6 +438,106 @@ class RimeConfig:
         with open(self.path("custom_phrase.txt"), "w", encoding="utf-8", newline="\n") as f:
             f.write("\n".join(lines) + "\n")
 
+    # ---- 候选调序（shadow 层）----
+    # 文件在用户数据目录根部：shadow_<方案>.yaml
+    #     version: 1
+    #     rules:
+    #       "wqiy":
+    #         - "你"
+    #         - "仰泳"
+    # 含义：打 wqiy 时「你」第一、「仰泳」第二，其余候选保持原相对顺序。
+    # 删掉某个编码，那个编码就回到词库默认顺序；删掉整个文件 = 全部恢复默认。
+    # 注意：这里**不动词库、不触发部署**，改完调 reload() 让服务重读即可。
+    def shadow_path(self, schema):
+        return self.path(f"shadow_{schema}.yaml")
+
+    @staticmethod
+    def _yaml_quote(s):
+        return '"' + str(s).replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+    def read_shadow(self, schema):
+        """返回 {编码: [词1, 词2, ...]}，按文件里的顺序。"""
+        p = self.shadow_path(schema)
+        rules = {}
+        if not os.path.isfile(p):
+            return rules
+        # 自己逐行解析，和 C++ 端 _LoadShadow 的规则完全对齐；
+        # 走 yaml.safe_load 会因为缩进/引号写法差异出现读不到的情况。
+        current = None
+        try:
+            with open(p, encoding="utf-8") as f:
+                for raw in f:
+                    line = raw.rstrip("\r\n")
+                    s = line.lstrip(" \t")
+                    if not s or s.startswith("#"):
+                        continue
+                    if s.startswith("- "):
+                        word = s[2:].strip()
+                        if len(word) >= 2 and word[0] == '"' and word[-1] == '"':
+                            word = word[1:-1].replace('\\"', '"').replace("\\\\", "\\")
+                        if current and word:
+                            rules[current].append(word)
+                        continue
+                    if ":" not in s:
+                        continue
+                    key = s.split(":", 1)[0].strip()
+                    if len(key) >= 2 and key[0] == '"' and key[-1] == '"':
+                        key = key[1:-1].replace('\\"', '"').replace("\\\\", "\\")
+                    if not key or key in ("rules", "version"):
+                        continue
+                    current = key
+                    rules.setdefault(current, [])
+        except Exception:
+            return {}
+        return {k: v for k, v in rules.items() if v}
+
+    def write_shadow(self, schema, rules):
+        """整表写回。rules 为空时直接删文件 —— 这就是「恢复默认词序」。"""
+        p = self.shadow_path(schema)
+        live = {k: list(v) for k, v in rules.items() if v}
+        if not live:
+            try:
+                if os.path.isfile(p):
+                    os.remove(p)
+            except Exception:
+                return False
+            return True
+        lines = [
+            "# 青石五笔 候选调序",
+            "# 由输入法在候选上「置顶」时自动写入；删掉对应编码即恢复默认顺序。",
+            "version: 1",
+            "rules:",
+        ]
+        for code, words in live.items():
+            lines.append(f"  {self._yaml_quote(code)}:")
+            for w in words:
+                lines.append(f"    - {self._yaml_quote(w)}")
+        try:
+            with open(p, "w", encoding="utf-8", newline="\n") as f:
+                f.write("\n".join(lines) + "\n")
+        except Exception:
+            return False
+        return True
+
+    def reload(self, wait=True):
+        """让正在运行的服务重读配置 —— 不部署、不重启引擎。
+
+        外观、按键、候选数、标点、主题、候选调序表走这条，实测 150–300ms。
+        只有码表/词库/自造词这类要重新编译的东西才需要 deploy()。
+        """
+        for d in WEASEL_CANDIDATES:
+            exe = os.path.join(d, "WeaselDeployer.exe")
+            if os.path.isfile(exe):
+                proc = subprocess.Popen([exe, "/reload"])
+                if wait:
+                    try:
+                        proc.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        return False
+                    return proc.returncode == 0
+                return True
+        return False
+
     def deploy(self, wait=False):
         for d in WEASEL_CANDIDATES:
             exe = os.path.join(d, "WeaselDeployer.exe")
@@ -605,7 +744,8 @@ class MainWindow(QMainWindow):
         nav_label.setContentsMargins(10, 0, 0, 8)
         nv.addWidget(nav_label)
 
-        self.nav_list = Navigation(["常用设置", "外观", "词库", "自定义词条", "快捷键", "关于"])
+        self.nav_list = Navigation(["常用设置", "外观", "词库", "自定义词条",
+                                    "自定义词序", "快捷键", "关于"])
         self.nav_list.setObjectName("navList")
         self.nav_list.setCurrentRow(0)
         self.nav_list.currentRowChanged.connect(self.switch_page)
@@ -622,7 +762,10 @@ class MainWindow(QMainWindow):
         setup_hint.setObjectName("hint")
         setup_hint.setWordWrap(True)
         setup_button = QPushButton("打开设置向导")
-        setup_button.setObjectName("link")
+        # 以前这里是 objectName("link") —— 主题里 #link 是「透明底、无边框」的
+        # 纯文字链接样式，放在灰底面板上看起来就像没上样式。
+        # 统一用默认按钮样式（灰底、圆角、36px 高），和其它按钮保持一致。
+        setup_button.setCursor(Qt.CursorShape.PointingHandCursor)
         setup_button.clicked.connect(self.open_wizard)
         setup_layout.addWidget(setup_title)
         setup_layout.addWidget(setup_hint)
@@ -642,6 +785,7 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.page_appearance())
         self.stack.addWidget(self.page_dict())
         self.stack.addWidget(self.page_phrases())
+        self.stack.addWidget(self.page_shadow_order())
         self.stack.addWidget(self.page_hotkey())
         self.stack.addWidget(self.page_about())
         body.addWidget(self.stack, 1)
@@ -1212,6 +1356,178 @@ class MainWindow(QMainWindow):
         self.phrase_table.selectRow(0)
         self.cfg.write_phrases(self.phrases)
 
+    def page_shadow_order(self):
+        """自定义词序 —— 管理候选调序（shadow 层）规则。
+
+        这些规则来自候选框右键「置顶」/ Ctrl+数字，也可以在这里直接删掉。
+        改动只写 shadow_<方案>.yaml + 热重载，不碰词库、不部署。
+        """
+        self.shadow_rules = {}
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(28, 22, 28, 22)
+        lay.setSpacing(14)
+        h = QLabel("自定义词序")
+        h.setObjectName("h1")
+        lay.addWidget(h)
+        s = QLabel("在候选框上右键「置顶」、或按 Ctrl+数字 做的调整都会记录在这里。"
+                   "删掉某条规则，该编码就回到词库原本的顺序。")
+        s.setObjectName("desc")
+        s.setWordWrap(True)
+        lay.addWidget(s)
+
+        bar = QHBoxLayout()
+        bar.setSpacing(10)
+        lbl = QLabel("方案")
+        lbl.setObjectName("fieldLabel")
+        bar.addWidget(lbl)
+        self.combo_shadow = QComboBox()
+        for sid, name, _desc in SCHEMAS:
+            self.combo_shadow.addItem(name, sid)
+        self.combo_shadow.setFixedWidth(190)
+        self.combo_shadow.currentIndexChanged.connect(lambda _i: self.load_shadow())
+        bar.addWidget(self.combo_shadow)
+        bar.addStretch(1)
+        lay.addLayout(bar)
+
+        panel = QFrame()
+        panel.setObjectName("candidatePanel")
+        pl = QVBoxLayout(panel)
+        pl.setContentsMargins(16, 16, 16, 14)
+        pl.setSpacing(10)
+
+        self.shadow_table = QTableWidget(0, 3)
+        self.shadow_table.setHorizontalHeaderLabels(["编码", "词条", "位次"])
+        self.shadow_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.Fixed)
+        self.shadow_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.Stretch)
+        self.shadow_table.horizontalHeader().setSectionResizeMode(
+            2, QHeaderView.ResizeMode.Fixed)
+        self.shadow_table.setColumnWidth(0, 130)
+        self.shadow_table.setColumnWidth(2, 70)
+        self.shadow_table.verticalHeader().setVisible(False)
+        self.shadow_table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows)
+        self.shadow_table.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection)
+        self.shadow_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.shadow_table.setMinimumHeight(280)
+        self.shadow_table.setAccessibleName("自定义词序规则列表")
+        pl.addWidget(self.shadow_table)
+
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        b_del = QPushButton("删除选中")
+        b_del.setToolTip("只删这一条规则，同编码的其它词条保留")
+        b_del.clicked.connect(self.shadow_del)
+        b_code = QPushButton("删除该编码")
+        b_code.setToolTip("把这个编码下的全部调序规则删掉")
+        b_code.clicked.connect(self.shadow_del_code)
+        b_refresh = QPushButton("刷新")
+        b_refresh.clicked.connect(self.load_shadow)
+        b_reset = QPushButton("恢复默认词序")
+        b_reset.setObjectName("primary")
+        b_reset.setToolTip("清空当前方案的全部调序规则")
+        b_reset.clicked.connect(self.shadow_reset)
+        for b in (b_del, b_code, b_refresh):
+            row.addWidget(b)
+        row.addStretch(1)
+        row.addWidget(b_reset)
+        pl.addLayout(row)
+        lay.addWidget(panel)
+
+        self.shadow_empty = QLabel("当前方案还没有任何调序规则。")
+        self.shadow_empty.setObjectName("hint")
+        self.shadow_empty.setWordWrap(True)
+        lay.addWidget(self.shadow_empty)
+
+        tip = QLabel(
+            "提示：调序规则按「编码」独立生效 —— 改 wqiy 不影响其它编码。"
+            "规则存放在用户目录的 shadow_<方案>.yaml，删掉整个文件等于全部恢复默认。"
+            "这里改完立刻生效，不需要重新部署。")
+        tip.setObjectName("hint")
+        tip.setWordWrap(True)
+        lay.addWidget(tip)
+        lay.addStretch(1)
+        return self.wrap_scroll(w)
+
+    # ---- 自定义词序操作 ----
+    def current_shadow_schema(self):
+        sid = self.combo_shadow.currentData() if hasattr(self, "combo_shadow") else None
+        return sid or getattr(self, "cur_schema", "wubi86")
+
+    def load_shadow(self):
+        self.shadow_rules = self.cfg.read_shadow(self.current_shadow_schema())
+        self.refresh_shadow()
+
+    def refresh_shadow(self):
+        t = self.shadow_table
+        rows = []
+        for code, words in self.shadow_rules.items():
+            for i, word in enumerate(words):
+                rows.append((code, word, i + 1))
+        t.setRowCount(len(rows))
+        for r, (code, word, pos) in enumerate(rows):
+            t.setItem(r, 0, QTableWidgetItem(code))
+            t.setItem(r, 1, QTableWidgetItem(word))
+            cell = QTableWidgetItem(str(pos))
+            cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            t.setItem(r, 2, cell)
+        if rows:
+            t.selectRow(0)
+        if hasattr(self, "shadow_empty"):
+            self.shadow_empty.setVisible(not rows)
+
+    def _shadow_save_and_reload(self):
+        sid = self.current_shadow_schema()
+        if not self.cfg.write_shadow(sid, self.shadow_rules):
+            QMessageBox.warning(self, "保存失败",
+                                "调序文件写入失败，请检查用户数据目录是否可写。")
+            return
+        # 热重载：服务端会清掉 shadow 缓存并重读，毫秒级，不部署
+        self.cfg.reload()
+        self.load_shadow()
+
+    def shadow_del(self):
+        row = self.shadow_table.currentRow()
+        if row < 0:
+            return
+        code = self.shadow_table.item(row, 0).text()
+        word = self.shadow_table.item(row, 1).text()
+        words = self.shadow_rules.get(code, [])
+        if word in words:
+            words.remove(word)
+        if not words:
+            self.shadow_rules.pop(code, None)
+        self._shadow_save_and_reload()
+
+    def shadow_del_code(self):
+        row = self.shadow_table.currentRow()
+        if row < 0:
+            return
+        code = self.shadow_table.item(row, 0).text()
+        self.shadow_rules.pop(code, None)
+        self._shadow_save_and_reload()
+
+    def shadow_reset(self):
+        if not self.shadow_rules:
+            QMessageBox.information(self, "已经是默认词序",
+                                    "当前方案没有任何调序规则。")
+            return
+        name = self.combo_shadow.currentText()
+        ret = QMessageBox.question(
+            self, "恢复默认词序",
+            f"确定清空「{name}」的全部调序规则吗？\n"
+            "清空后所有编码都回到词库原本的顺序。",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if ret != QMessageBox.StandardButton.Yes:
+            return
+        self.shadow_rules = {}
+        self._shadow_save_and_reload()
+
     def page_hotkey(self):
         w = QWidget()
         lay = QVBoxLayout(w)
@@ -1346,6 +1662,14 @@ class MainWindow(QMainWindow):
             self.dict_stat_labels[sid].setText(f"{n:,}" if n else "未安装")
         self.load_phrases()
 
+        # 自定义词序：默认跟着当前方案走
+        idx = self.combo_shadow.findData(self.cur_schema)
+        if idx >= 0 and idx != self.combo_shadow.currentIndex():
+            self.combo_shadow.blockSignals(True)
+            self.combo_shadow.setCurrentIndex(idx)
+            self.combo_shadow.blockSignals(False)
+        self.load_shadow()
+
     def save(self, deploy=True):
         try:
             self.cfg.write_default(self.cur_schema, self.spin_page.value())
@@ -1369,17 +1693,14 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "保存失败", str(e))
             return False
         if deploy:
-            ok = self.cfg.deploy(wait=True)
-            restarted = False
-            if ok:
-                # custom_phrase 只在方案加载时读，必须重启服务才生效
-                restarted = self.cfg.restart_server()
+            # 只走热重载：改外观/按键/候选数/标点/主题这些，引擎重读一次配置就够了，
+            # 不跑部署器、不重启服务，所以没有等待窗口，也不会卡住输入法。
+            ok = self.cfg.reload(wait=True)
             QMessageBox.information(
                 self, "已应用",
-                "配置已保存" +
-                ("，输入法服务已重启，新设置立即生效。" if restarted else
-                 "，正在重新部署…" if ok else
-                 "。\n未找到 WeaselDeployer，请手动在托盘菜单里重新部署。")
+                "配置已保存并立即生效。" if ok else
+                "配置已保存，但输入法服务当前没有运行；\n"
+                "下次打字时它会自动启动并读取新设置。"
             )
         return True
 
@@ -1412,16 +1733,30 @@ class MainWindow(QMainWindow):
         with open(dst, "w", encoding="utf-8", newline="\n") as f:
             f.write("\n".join(out) + "\n")
         QMessageBox.information(self, "导入完成", f"已导入 {n:,} 条到「{sid}」，正在重新部署…")
-        self.cfg.deploy(wait=True)
-        self.cfg.restart_server()
+        dlg = BusyDialog(self, '正在重新部署', '正在把新词条编译进码表…')
+        dlg.show()
+        QApplication.processEvents()
+        try:
+            self.cfg.deploy(wait=True)
+            self.cfg.restart_server()
+        finally:
+            dlg.finish()
         self.load()
 
     def open_userdir(self):
         os.startfile(self.cfg.dir)
 
     def redeploy(self):
-        ok = self.cfg.deploy(wait=True)
-        restarted = self.cfg.restart_server() if ok else False
+        # 真部署（重新编译码表/词库）是重活，给一个明确的等待窗口，
+        # 免得界面白屏、系统标"无响应"被当成卡死。
+        dlg = BusyDialog(self, '正在重新部署', '正在重新编译码表与词库…')
+        dlg.show()
+        QApplication.processEvents()
+        try:
+            ok = self.cfg.deploy(wait=True)
+            restarted = self.cfg.restart_server() if ok else False
+        finally:
+            dlg.finish()
         QMessageBox.information(
             self, "重新部署",
             "已重新部署并重启输入法服务" if restarted

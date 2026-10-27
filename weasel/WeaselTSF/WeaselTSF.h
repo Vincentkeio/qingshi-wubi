@@ -230,6 +230,21 @@ class WeaselTSF : public ITfTextInputProcessorEx,
 
   /* Weasel Related */
   weasel::Client m_client;
+  // 候选窗右键「固顶」在 TSF 进程里触发，真正干活的是服务端，需要 IPC。
+ public:
+  weasel::Client& client() { return m_client; }
+  // 候选调序：发 IPC 给服务端，再把重排后的候选取回来刷新本地窗口。
+  bool _AdjustShadow(int action, size_t index);
+  // 取回服务端重排后的候选并重绘（只在消息循环里调用）
+  void _RefreshCandidates();
+  // 固顶后置位，下一次按键时统一刷新（避开窗口过程重入）
+  bool m_shadow_refresh_pending = false;
+  // 独立的隐藏窗口：固顶后的刷新投递到它，由它的窗口过程执行，
+  // 这样调用栈里没有候选窗的窗口过程，不会重入崩溃。
+  HWND m_refresh_hwnd = nullptr;
+  void _EnsureRefreshWindow();
+  static LRESULT CALLBACK _RefreshWndProc(HWND, UINT, WPARAM, LPARAM);
+ private:
   DWORD _activateFlags;
 
   /* IME status */

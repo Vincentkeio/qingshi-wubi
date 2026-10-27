@@ -8,6 +8,7 @@
 #include "CandidateList.h"
 #include "LanguageBar.h"
 #include "Compartment.h"
+#include "QingshiDiag.h"
 #include "ResponseParser.h"
 
 static void error_message(const WCHAR* msg) {
@@ -131,6 +132,9 @@ STDMETHODIMP WeaselTSF::ActivateEx(ITfThreadMgr* pThreadMgr,
   _pThreadMgr = pThreadMgr;
   _tfClientId = tfClientId;
 
+  qingshi::diag::Log(L"ActivateEx flags=%s",
+                     qingshi::diag::DescribeThreadFlags(dwFlags).c_str());
+
   if (!_InitThreadMgrEventSink())
     goto ExitError;
 
@@ -151,24 +155,115 @@ STDMETHODIMP WeaselTSF::ActivateEx(ITfThreadMgr* pThreadMgr,
   if (!_InitPreservedKey())
     goto ExitError;
 
+  // 语言栏、compartment、线程焦点订阅都属于"锦上添花"。全屏游戏里语言栏
+  // 往往创建失败，旧代码一旦失败就 Deactivate() 并返回 E_FAIL，TSF 会认定
+  // 这个 TIP 激活失败，整个游戏里就一个字都打不出来。这里改成失败也继续。
   if (!_InitLanguageBar())
-    goto ExitError;
+    qingshi::diag::Log(L"ActivateEx: language bar unavailable (continuing)");
 
   if (!_IsKeyboardOpen())
     _SetKeyboardOpen(TRUE);
 
   if (!_InitCompartment())
-    goto ExitError;
+    qingshi::diag::Log(L"ActivateEx: compartment sink unavailable (continuing)");
   if (!_InitThreadFocusSink())
-    goto ExitError;
+    qingshi::diag::Log(L"ActivateEx: thread focus sink unavailable (continuing)");
 
   _EnsureServerConnected();
 
+  qingshi::diag::Log(L"ActivateEx: activated");
   return S_OK;
 
 ExitError:
+  qingshi::diag::Log(L"ActivateEx: FAILED, deactivating");
   Deactivate();
   return E_FAIL;
+}
+
+LRESULT CALLBACK WeaselTSF::_RefreshWndProc(HWND hwnd,
+                                            UINT msg,
+                                            WPARAM wParam,
+                                            LPARAM lParam) {
+  if (msg == WM_NCCREATE) {
+    auto* cs = reinterpret_cast<CREATESTRUCTW*>(lParam);
+    ::SetWindowLongPtrW(hwnd, GWLP_USERDATA,
+                        reinterpret_cast<LONG_PTR>(cs->lpCreateParams));
+    return TRUE;
+  }
+  if (msg == WM_APP + 1) {
+    auto* self = reinterpret_cast<WeaselTSF*>(
+        ::GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+    if (self)
+      self->_RefreshCandidates();
+    return 0;
+  }
+  return ::DefWindowProcW(hwnd, msg, wParam, lParam);
+}
+
+void WeaselTSF::_EnsureRefreshWindow() {
+  if (m_refresh_hwnd && ::IsWindow(m_refresh_hwnd))
+    return;
+  static bool cls_ready = false;
+  if (!cls_ready) {
+    WNDCLASSEXW wc = {sizeof(wc)};
+    wc.lpfnWndProc = &WeaselTSF::_RefreshWndProc;
+    wc.hInstance = g_hInst;
+    wc.lpszClassName = L"QingshiShadowRefresh";
+    ::RegisterClassExW(&wc);
+    cls_ready = true;
+  }
+  m_refresh_hwnd =
+      ::CreateWindowExW(0, L"QingshiShadowRefresh", L"", 0, 0, 0, 0, 0,
+                        HWND_MESSAGE, nullptr, g_hInst, this);
+}
+
+void WeaselTSF::_RefreshCandidates() {
+  if (!m_client.Echo())
+    return;
+  // 主动要一次应答：服务端此时已经按新规则重排过，会返回当前 composition
+  // 的最新候选。这样 channel 里只有这一轮的数据，不会和按键响应串包。
+  m_client.ProcessKeyEvent(0);
+
+  weasel::Context ctx;
+  weasel::Status status = _status;
+  weasel::ResponseParser parser(NULL, &ctx, &status, NULL, &_cand->style());
+  if (!m_client.GetResponseData(std::ref(parser)))
+    return;
+
+  // ★ 拿到的上下文可能没有候选（会话对不上 / composition 已结束）。
+  // 这时候绝不能 _UpdateUI —— 那会把正在显示的候选窗直接藏掉，
+  // 用户看到的就是「点一下固顶，候选框没了」。
+  if (ctx.cinfo.candies.empty())
+    return;
+
+  _status = status;
+  // 只重绘本地窗口：不调 _UpdateUI（它会走 _UpdateUIElement 回调宿主 COM 对象，
+  // 在固顶这种「非按键」上下文里重入宿主，正是之前宿主崩溃的根源）。
+  _cand->UpdateLocalOnly(ctx, status);
+}
+
+bool WeaselTSF::_AdjustShadow(int action, size_t index) {
+  if (!_EnsureServerConnected())
+    return false;
+
+  // ① 先本地重排候选窗 —— 纯内存 + 只重绘，不碰宿主 COM，点完立刻看到顺序变。
+  if (_cand) {
+    const auto& candies = _cand->ctx().cinfo.candies;
+    if (index < candies.size()) {
+      const std::wstring word = candies[index].str;
+      if (action == 0) {
+        _cand->ReorderLocal(word);                       // 置顶
+      } else if (action == 1) {
+        _cand->RestoreLocal();                           // 取消固顶 = 还原原始顺序
+      } else if (action >= 100) {
+        _cand->MoveLocal(word, static_cast<size_t>(action - 100 - 1));  // 调到第 N 位
+      }
+    }
+  }
+
+  // ② 再让服务端把规则写进 shadow_<方案>.yaml，下次输入同一编码直接生效。
+  m_client.AdjustShadow(action, index);
+  return true;
 }
 
 STDMETHODIMP WeaselTSF::OnSetThreadFocus() {

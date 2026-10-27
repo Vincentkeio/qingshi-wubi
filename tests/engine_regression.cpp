@@ -21,9 +21,9 @@ std::wstring wide(const std::string& text) {
   MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), output.data(), size);
   return output;
 }
-std::vector<std::string> candidates(RimeApi* api, RimeSessionId session) {
+std::vector<std::string> candidates(RimeApi* api, RimeSessionId session, const char* code = "dddd") {
   api->clear_composition(session);
-  api->simulate_key_sequence(session, "dddd");
+  api->simulate_key_sequence(session, code);
   RIME_STRUCT(RimeContext, context);
   assert(api->get_context(session, &context));
   std::vector<std::string> result;
@@ -72,6 +72,23 @@ int wmain(int argc, wchar_t** argv) {
     }
   }
   api->set_option(session, "ascii_mode", false);
+  // Selecting later candidates repeatedly must never train a new ranking.
+  for (const char* schema : {"wubi86", "wubi98", "wubi06"}) {
+    assert(api->select_schema(session, schema));
+    api->set_option(session, "ascii_mode", false);
+    auto fixed = candidates(api, session, "a");
+    assert(fixed.size() >= 2);
+    for (int repetition = 0; repetition < 40; ++repetition) {
+      api->simulate_key_sequence(session, "a");
+      assert(api->select_candidate_on_current_page(session, 1));
+      RIME_STRUCT(RimeCommit, selected);
+      assert(api->get_commit(session, &selected));
+      assert(std::string(selected.text) == fixed[1]);
+      api->free_commit(&selected);
+      assert(candidates(api, session, "a") == fixed);
+    }
+  }
+  assert(api->select_schema(session, "wubi86"));
   auto baseline = candidates(api, session);
   assert(baseline.size() >= 3);
   auto word = wide(baseline[2]);
@@ -99,5 +116,5 @@ int wmain(int argc, wchar_t** argv) {
   assert(restored == baseline);
   api->destroy_session(session);
   api->finalize();
-  std::cout << "PASS: Shift chords preserve mode, standalone Shift toggles, no duplicate commit; unpin restores original candidate sequence.\n";
+  std::cout << "PASS: All three schemas keep candidate order after 40 repeated selections each; Shift chords preserve mode, no duplicate commit; unpin restores original sequence.\n";
 }

@@ -19,7 +19,7 @@ import winreg
 import zipfile
 
 APP_ID = 'QingshiWubi'
-VERSION = '1.0.7'
+VERSION = '1.0.8'
 APP_KEY = r'Software\QingshiWubi'
 RIME_KEY = r'Software\Rime\Weasel'
 UNINSTALL_KEY = r'Software\Microsoft\Windows\CurrentVersion\Uninstall\QingshiWubi'
@@ -603,6 +603,8 @@ class Installer:
                 if name not in existing_data and source.is_file() and '青石' in source.read_text(encoding='utf-8', errors='ignore')[:1024]:
                     shutil.copy2(source, target)
             atomic_json(self.data / DATA_MARKER, {'app_id': APP_ID})
+            from fixed_order import ensure_fixed_order
+            ensure_fixed_order(self.data)
             self.progress(35, '正在停止旧版输入法服务')
             self.system.stop([self.root] + ([legacy] if legacy else []))
             self.progress(45, '正在注册输入法')
@@ -625,6 +627,7 @@ class Installer:
             for name, value in {'InstallDir': str(self.root), 'RuntimeDir': str(runtime), 'Version': VERSION}.items():
                 self.write(winreg.HKEY_LOCAL_MACHINE, APP_KEY, name, value)
             self.write(winreg.HKEY_LOCAL_MACHINE, RUN_KEY, 'QingshiWubi', f'"{runtime / "WeaselServer.exe"}"')
+            self.write(winreg.HKEY_CURRENT_USER, RUN_KEY, 'QingshiUpdate', f'"{target_exe}" --check-update')
             for view in VIEWS:
                 for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
                     command = self.reg.get(hive, RUN_KEY, 'WeaselServer', view)
@@ -805,7 +808,7 @@ class Installer:
                 server = self.reg.get(winreg.HKEY_LOCAL_MACHINE, RIME_KEY, 'ServerExecutable', view)
                 if server == 'WeaselServer.exe':
                     self.reg.delete_value(winreg.HKEY_LOCAL_MACHINE, RIME_KEY, 'ServerExecutable', view)
-            for name in ('QingshiWubi', 'WeaselServer'):
+            for name in ('QingshiWubi', 'WeaselServer', 'QingshiUpdate'):
                 command = self.reg.get(winreg.HKEY_LOCAL_MACHINE, RUN_KEY, name, view)
                 if command and any(str(root).lower() in command.lower() for root in roots):
                     self.reg.delete_value(winreg.HKEY_LOCAL_MACHINE, RUN_KEY, name, view)
@@ -861,7 +864,7 @@ class Installer:
                 else:
                     self.reg.set(winreg.HKEY_CURRENT_USER, RIME_KEY, 'Profile', prior, view)
             self.reg.delete_value(winreg.HKEY_CURRENT_USER, RIME_KEY, 'QingshiShiftLetterDirect', view)
-            for name in ('QingshiWubi', 'WeaselServer'):
+            for name in ('QingshiWubi', 'WeaselServer', 'QingshiUpdate'):
                 command = self.reg.get(winreg.HKEY_CURRENT_USER, RUN_KEY, name, view)
                 if command and any(str(root).lower() in command.lower() for root in roots):
                     self.reg.delete_value(winreg.HKEY_CURRENT_USER, RUN_KEY, name, view)

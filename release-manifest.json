@@ -1,10 +1,10 @@
 {
-  "version": "1.0.7",
+  "version": "1.0.8",
   "platform": "Windows 10/11 x64",
   "installer": {
     "name": "QingshiSetup.exe",
-    "size": 46286099,
-    "sha256": "94846a83a28f7663ec4f4b356be68f8daa80e48f8586632772361b2e18e77519"
+    "size": 46209442,
+    "sha256": "bda2e2714769e58e3d50c53f7eb547b3277d304f88cdc91aee9d06bb8810ca19"
   },
   "upstream_weasel": "82b50c9e9b9ee0bd31357db6f25ddc804546c7f7",
   "librime_binary_revision": "33e7814",
@@ -15,16 +15,16 @@
   "engine": "Weasel / Rime",
   "native": {
     "WeaselServer.exe": {
-      "size": 2525184,
-      "sha256": "3587164aa7e1228b4968d9e8ac17d760899194c67bf11fcb18ce4cb2b6b46f44"
+      "size": 2526720,
+      "sha256": "9e63a5c92aa34d0ba887c51d74eead9add6237af2471a1679688b17a5ea80ea1"
     },
     "WeaselDeployer.exe": {
-      "size": 1297920,
-      "sha256": "89fe5e9a106730345f14b0e91b97c5dbb3fa8acbfe71c6597f9fa2add0169541"
+      "size": 1297408,
+      "sha256": "3946557001d18933a753cf042e379dbebc9d4de5abab2a8dab7723499b287637"
     },
     "weaselx64.dll": {
-      "size": 1214976,
-      "sha256": "bf676092820ae4643b21b0381febbcb2db8393eb2866952776577d51a60c1dae"
+      "size": 1215488,
+      "sha256": "3133133bc256071a7ed4f2d2778465fb9fd661b5a05928e5081f8dab03835440"
     },
     "qingshi_game.ime": {
       "size": 678400,
@@ -35,13 +35,25 @@
       "sha256": "86b4c7357d4c6d293ce5589b234d8859ca2ac30923a03bedfa3926eeaf97fb0b"
     }
   },
+  "changes": [
+    "外观热加载：候选窗在每次应答时同步最新样式，换配色/字体/圆角不必重启输入法",
+    "严格固定词序：三套方案关闭用户词典学习，反复选后序候选不再自动提前",
+    "候选窗调词序：右键置顶 / Ctrl+数字，规则写入 shadow 层，不改码表、不触发部署",
+    "配置导入导出：备份外观、自定义词条、自定义词库与码表、手动词序",
+    "自动检查更新：每天最多一次，只提示并打开官方发布页",
+    "游戏兼容：TSF 组件装进 System32 并从那里注册，补齐 IMM 兼容组件与注册残留清理",
+    "修复设置中心「应用」时的等待窗口文案与执行路径：外观走热加载，只有词条改动才重启服务"
+  ],
   "validation": {
     "installer_and_compatibility_tests": 21,
+    "config_and_save_flow_tests": 18,
     "payload_files": 68,
     "native_imm_tests": "passed",
     "engine_regression": "passed",
+    "fixed_order_repeat_selection": "3 schemas x 40 picks, order unchanged",
+    "appearance_hot_reload": "style synced on next keystroke without service restart",
     "packaged_qt": "passed",
     "packaged_preview": "passed",
-    "lol_training_mode": "user-confirmed candidates and Chinese commit"
+    "lol_training_mode": "candidates and Chinese commit confirmed"
   }
 }

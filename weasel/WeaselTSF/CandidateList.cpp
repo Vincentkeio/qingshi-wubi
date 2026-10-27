@@ -314,7 +314,12 @@ void CCandidateList::MoveLocal(const std::wstring& word, size_t target) {
 
 void CCandidateList::UpdateLocalOnly(const Context& ctx,
                                      const Status& status) {
+  const bool style_changed = (_ui->style() != _style);
+  if (style_changed)
+    _ui->style() = _style;
   _ui->Update(ctx, status);
+  if (style_changed)
+    _ui->Refresh();
   const bool allowShow = _localUI || _pbShow;
   if (status.composing)
     Show(allowShow);
@@ -326,6 +331,21 @@ void CCandidateList::UpdateUI(const Context& ctx, const Status& status) {
   // 新的候选列表意味着顺序重新来自引擎，本地重排的映射与快照都作废。
   m_display_order.clear();
   m_original_candies.clear();
+  // 服务端每次应答都带全量 UIStyle（见 RimeWithWeasel 的 oa << style）。
+  // 但候选窗是宿主进程里长期复用的同一个窗口对象，_ui->style() 才是真正
+  // 驱动绘制的那份副本，以前只在「建窗」和「启用本地窗」时赋值一次，
+  // 于是设置里换了配色，已经打开的旧候选框还是旧主题。
+  // 这里每次按键都同步一次：WeaselPanel::Refresh 检测到 m_ostyle != m_style
+  // 就会重init字体、重建布局并重绘 —— 热更新即可生效，不用重启服务。
+  const bool style_changed = (_ui->style() != _style);
+  if (style_changed) {
+    _ui->style() = _style;
+    // 排查用：确认客户端确实收到了新样式（只记颜色和字号，不含任何输入内容）。
+    qingshi::diag::Log(L"style synced back=0x%08X hilite=0x%08X font_point=%d",
+                       static_cast<unsigned>(_style.back_color),
+                       static_cast<unsigned>(_style.hilited_candidate_back_color),
+                       _style.font_point);
+  }
   if (_ui->style().inline_preedit) {
     _ui->style().client_caps |= weasel::INLINE_PREEDIT_CAPABLE;
   } else {
@@ -336,6 +356,10 @@ void CCandidateList::UpdateUI(const Context& ctx, const Status& status) {
   /// if it is owned by active view window
   //_UpdateOwner();
   _ui->Update(ctx, status);
+  // Update 在「上下文和状态都没变」时会直接返回，样式变化必须再补一次重绘，
+  // 否则改完配色继续打同一个编码，画面还是旧的。
+  if (style_changed)
+    _ui->Refresh();
 
   ++_updateSeq;
   // 宿主若在自己画候选，会在 UpdateUIElement 里同步回调 GetCount/GetString。

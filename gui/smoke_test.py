@@ -25,7 +25,7 @@ def run(directory):
         window = MainWindow(cfg)
         for width, height, suffix in [(1060, 720, ''), (900, 620, '-compact')]:
             window.resize(width, height)
-            for index, name in enumerate(('common', 'appearance', 'dict', 'phrases', 'hotkey', 'about')):
+            for index, name in enumerate(('common', 'appearance', 'dict', 'phrases', 'shadow', 'hotkey', 'backup-update', 'about')):
                 window.nav_list.setCurrentRow(index)
                 capture(window, name + suffix)
                 assert window.stack.currentIndex() == index

@@ -141,6 +141,7 @@ speller:
   max_code_length: 4
 
 translator:
+  enable_user_dict: false
   dictionary: {sid}
   enable_charset_filter: true
   enable_sentence: false

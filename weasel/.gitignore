@@ -30,6 +30,7 @@ compile_commands.json
 /output/archives
 /include/glog
 /include/rime*.h
+!/include/RimeWithWeasel.h
 /ipch
 env.bat
 weasel.props

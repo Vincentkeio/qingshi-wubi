@@ -54,6 +54,11 @@ def main():
     if '--worker' in sys.argv:
         from installer_backend import run_worker
         return run_worker(sys.argv[sys.argv.index('--worker') + 1])
+    if '--check-update' in sys.argv:
+        from backup_page import run_background_check
+        from app_paths import user_directory
+        from wubi_settings import APP_VER
+        return run_background_check(user_directory(), APP_VER)
     frozen = getattr(sys, 'frozen', False)
     uninstall = '--uninstall' in sys.argv
     preview = '--preview' in sys.argv

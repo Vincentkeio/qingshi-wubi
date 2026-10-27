@@ -8,6 +8,7 @@ import sys
 import shutil
 import subprocess
 import datetime
+import time
 
 from PyQt6.QtCore import Qt, QSize, pyqtSignal
 from PyQt6.QtGui import QFont, QIcon, QPixmap, QColor, QPainter, QPalette
@@ -27,7 +28,7 @@ except ImportError:
     yaml = None
 
 APP_NAME = "青石五笔输入法"
-APP_VER = "1.0.7"
+APP_VER = "1.0.8"
 from app_paths import user_directory, runtime_directories
 RIME_DIR = user_directory()
 WEASEL_CANDIDATES = runtime_directories()
@@ -37,6 +38,21 @@ SCHEMAS = [
     ("wubi98", "五笔 98", "98版码元体系"),
     ("wubi06", "新世纪五笔", "2008 新世纪版"),
 ]
+
+
+def apply_plan(appearance_changed, phrases_changed, needs_deploy):
+    """点「应用」之后该走哪条路。
+
+    - restart : 自定义词条是稳定词典，只在方案加载时读进引擎，必须重启服务；
+    - reload  : 外观（配色/字体/圆角/横竖排）客户端会自己同步到已打开的候选窗，
+                热加载即可，不重启、不打断输入；
+    - deploy  : 只有配置还没进部署产物时才需要跑部署器。
+    """
+    if phrases_changed:
+        return 'restart'
+    if appearance_changed:
+        return 'deploy+reload' if needs_deploy else 'reload'
+    return 'deploy' if needs_deploy else 'reload'
 
 # ---------------- 样式 ----------------
 from ui_theme import QSS, apply_theme
@@ -137,7 +153,7 @@ class RimeConfig:
             "inline_preedit": bool(pick("inline_preedit", "style/inline_preedit", True)),
             "round_corner": int(
                 pick("round_corner", "style/layout/round_corner", 6,
-                     layout.get("round_corner")) or 6),
+                     layout.get("round_corner"))),
         }
 
     # 输入习惯：对应 schema switches 的下标（顺序固定，见 pkg/*.schema.yaml）
@@ -188,6 +204,10 @@ class RimeConfig:
             style = "noop"
         lines.append(f"  ascii_composer/switch_key/Shift_L: {style}")
         lines.append(f"  ascii_composer/switch_key/Shift_R: {style}")
+        lines.extend(["  translator/enable_user_dict: false",
+                      "  translator/enable_sentence: false",
+                      "  translator/enable_encoder: false",
+                      "  translator/encode_commit_history: false"])
         with open(self.path(f"{sid}.custom.yaml"), "w", encoding="utf-8", newline="\n") as f:
             f.write("\n".join(lines) + "\n")
 
@@ -404,8 +424,19 @@ class RimeConfig:
             lines.append("      color_format: argb")
             for field in fields:
                 lines.append(f"      {field}: {skin[field]}")
+            lines.append(f"      hilited_label_color: {skin['hilited_candidate_label_color']}")
         with open(self.path("weasel.custom.yaml"), "w", encoding="utf-8", newline="\n") as f:
             f.write("\n".join(lines) + "\n")
+
+    def appearance_needs_deploy(self):
+        patch = self.read_yaml('weasel.custom.yaml').get('patch') or {}
+        compiled = self.read_yaml('build/weasel.yaml')
+        def contains(actual, expected):
+            if isinstance(expected, dict):
+                return isinstance(actual, dict) and all(
+                    key in actual and contains(actual[key], value) for key, value in expected.items())
+            return actual == expected
+        return not contains(compiled, patch)
 
     # ---- 自定义词条 / 固顶词条 ----
     def read_phrases(self):
@@ -553,16 +584,25 @@ class RimeConfig:
                 return True
         return False
 
-    def restart_server(self):
-        """结束 WeaselServer；TSF 下次输入时自动拉起新实例并重读词表。
-        custom_phrase 是稳定词典，只在方案加载时读，不重启就不会生效。"""
+    def runtime_dir(self):
+        """找到真正装着 WeaselServer.exe 的运行时目录。"""
+        for d in WEASEL_CANDIDATES:
+            if os.path.isfile(os.path.join(d, "WeaselServer.exe")):
+                return d
+        return None
+
+    def server_pipe(self):
+        # Weasel 的 IPC 管道名：\\.\pipe\<用户名>\WeaselNamedPipe
+        return "\\\\.\\pipe\\%s\\WeaselNamedPipe" % os.environ.get("USERNAME", "")
+
+    @staticmethod
+    def _server_pids():
         try:
             import ctypes
             from ctypes import wintypes
 
             kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
             TH32CS_SNAPPROCESS = 0x00000002
-            PROCESS_TERMINATE = 0x0001
 
             class PROCESSENTRY32W(ctypes.Structure):
                 _fields_ = [
@@ -580,24 +620,78 @@ class RimeConfig:
 
             snap = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
             if snap == -1 or snap == 0xFFFFFFFFFFFFFFFF:
-                return False
+                return []
             entry = PROCESSENTRY32W()
             entry.dwSize = ctypes.sizeof(PROCESSENTRY32W)
-            killed = False
+            pids = []
             ok = kernel32.Process32FirstW(snap, ctypes.byref(entry))
             while ok:
                 if entry.szExeFile.lower() == "weaselserver.exe":
-                    handle = kernel32.OpenProcess(
-                        PROCESS_TERMINATE, False, entry.th32ProcessID)
-                    if handle:
-                        kernel32.TerminateProcess(handle, 0)
-                        kernel32.CloseHandle(handle)
-                        killed = True
+                    pids.append(entry.th32ProcessID)
                 ok = kernel32.Process32NextW(snap, ctypes.byref(entry))
             kernel32.CloseHandle(snap)
+            return pids
+        except Exception:
+            return []
+
+    def _terminate_servers(self):
+        try:
+            import ctypes
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            PROCESS_TERMINATE = 0x0001
+            killed = False
+            for pid in self._server_pids():
+                handle = kernel32.OpenProcess(PROCESS_TERMINATE, False, pid)
+                if handle:
+                    kernel32.TerminateProcess(handle, 0)
+                    kernel32.CloseHandle(handle)
+                    killed = True
             return killed
         except Exception:
             return False
+
+    def restart_server(self, wait=True):
+        """结束 WeaselServer 并**立刻拉起新实例**。
+
+        为什么外观改动非要走这一步：候选窗是宿主进程里长期复用的同一个窗口，
+        改配色后旧窗口不一定会自己重绘（客户端 DLL 未同步样式的版本更是如此）。
+        让服务重启、宿主重连并重建会话，是唯一 100% 能换掉旧框外观的办法。
+
+        注意不能只杀不拉：TSF 客户端连不上管道会一直 WaitNamedPipe 死等，
+        输入法直接失去响应。所以这里杀完必须自己把新实例拉起来并等它就绪。
+        """
+        self._terminate_servers()
+        # 等旧进程真正退出，否则新实例会和它对撞（管道名是单实例的）。
+        for _ in range(50):
+            if not self._server_pids():
+                break
+            time.sleep(0.1)
+        runtime = self.runtime_dir()
+        if not runtime:
+            return False
+        try:
+            subprocess.Popen(
+                [os.path.join(runtime, "WeaselServer.exe")], cwd=runtime,
+                creationflags=0x00000008)          # DETACHED_PROCESS
+        except Exception:
+            return False
+        if not wait:
+            return True
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel32.WaitNamedPipeW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD]
+            kernel32.WaitNamedPipeW.restype = wintypes.BOOL
+            pipe = self.server_pipe()
+            for _ in range(80):
+                if kernel32.WaitNamedPipeW(pipe, 150):
+                    return True
+                time.sleep(0.1)
+        except Exception:
+            pass
+        return bool(self._server_pids())
 
     def stats(self):
         """统计当前词库"""
@@ -745,11 +839,17 @@ class MainWindow(QMainWindow):
         nv.addWidget(nav_label)
 
         self.nav_list = Navigation(["常用设置", "外观", "词库", "自定义词条",
-                                    "自定义词序", "快捷键", "关于"])
+                                    "自定义词序", "快捷键", "备份与更新", "关于"])
         self.nav_list.setObjectName("navList")
         self.nav_list.setCurrentRow(0)
         self.nav_list.currentRowChanged.connect(self.switch_page)
-        nv.addWidget(self.nav_list, 1)
+        nav_scroll = QScrollArea()
+        nav_scroll.setWidgetResizable(True)
+        nav_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        nav_scroll.setWidget(self.nav_list)
+        self.nav_scroll = nav_scroll
+        self.nav_list.setMinimumHeight(self.nav_list.layout().minimumSize().height())
+        nv.addWidget(nav_scroll, 1)
 
         setup_panel = QFrame()
         setup_panel.setObjectName("statusPanel")
@@ -787,6 +887,9 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.page_phrases())
         self.stack.addWidget(self.page_shadow_order())
         self.stack.addWidget(self.page_hotkey())
+        from backup_page import BackupPage
+        self.backup_page = BackupPage(self, APP_VER)
+        self.stack.addWidget(self.wrap_scroll(self.backup_page))
         self.stack.addWidget(self.page_about())
         body.addWidget(self.stack, 1)
 
@@ -813,6 +916,14 @@ class MainWindow(QMainWindow):
         outer.addWidget(footer)
 
         self.load()
+
+    def closeEvent(self, event):
+        if self.backup_page.worker and self.backup_page.worker.isRunning():
+            self.backup_page.pending_close = True
+            self.hide()
+            event.ignore()
+            return
+        super().closeEvent(event)
 
     def open_wizard(self):
         from setup_wizard import SetupWizard
@@ -1046,7 +1157,7 @@ class MainWindow(QMainWindow):
         self.combo_scheme.setMinimumWidth(220)
         self.combo_scheme.currentIndexChanged.connect(self.update_candidate_preview)
         theme_layout.addWidget(self.combo_scheme)
-        theme_hint = QLabel("预览使用与候选窗相同的配色，切换后即时刷新")
+        theme_hint = QLabel("左边是预览；点「应用」后候选窗立即换成新配色，不用重启")
         theme_hint.setObjectName("hint")
         theme_layout.addWidget(theme_hint)
         theme_layout.addStretch(1)
@@ -1265,7 +1376,7 @@ class MainWindow(QMainWindow):
 
         tip = QLabel(
             "提示：输入时也可在候选窗上点右键，直接把当前词固顶或加入自定义词条。"
-            "修改后点「应用」重新部署生效。")
+            "改完点「应用」，新词条会立刻进入候选。")
         tip.setObjectName("hint")
         tip.setWordWrap(True)
         lay.addWidget(tip)
@@ -1275,6 +1386,8 @@ class MainWindow(QMainWindow):
     # ---- 自定义词条操作 ----
     def load_phrases(self):
         self.phrases = self.cfg.read_phrases()
+        # 记下加载时的词条，保存时用来判断「这次改的到底是外观还是词条」。
+        self._phrase_snapshot = list(self.phrases)
         self.refresh_phrases()
 
     def refresh_phrases(self):
@@ -1606,8 +1719,8 @@ class MainWindow(QMainWindow):
         gb2 = QGroupBox("码表说明")
         g2 = QVBoxLayout(gb2)
         t = QLabel(
-            "· 三套方案均保持原表物理顺序（Rime 中通过 sort: original 实现），\n"
-            "  不按词频重排，保证与极点/王码原版一致。\n"
+            "· 三套方案保留原表顺序，并关闭自动学习和词频调序。\n"
+            "  自定义词条和手动词序规则按你设置的顺序优先。\n"
             "· 86 版单字 26,584 个，GBK 20,902 字全覆盖。\n"
             "· 已过滤非法编码（英文单词、超过 4 码的条目）。"
         )
@@ -1621,6 +1734,7 @@ class MainWindow(QMainWindow):
     # ---------- 逻辑 ----------
     def switch_page(self, i):
         self.stack.setCurrentIndex(i)
+        self.nav_scroll.ensureWidgetVisible(self.nav_list.buttons[i], 0, 8)
 
     def pick_schema(self, sid):
         self.cur_schema = sid
@@ -1671,6 +1785,7 @@ class MainWindow(QMainWindow):
         self.load_shadow()
 
     def save(self, deploy=True):
+        before = self.cfg.weasel_style()
         try:
             self.cfg.write_default(self.cur_schema, self.spin_page.value())
             self.cfg.write_schema_switches(self.cur_schema, {
@@ -1689,19 +1804,63 @@ class MainWindow(QMainWindow):
                 "inline_preedit": self.chk_i.isChecked(),
                 "round_corner": self.spin_round.value(),
             })
+            from fixed_order import ensure_fixed_order
+            ensure_fixed_order(self.cfg.dir)
         except Exception as e:
             QMessageBox.warning(self, "保存失败", str(e))
             return False
         if deploy:
-            # 只走热重载：改外观/按键/候选数/标点/主题这些，引擎重读一次配置就够了，
-            # 不跑部署器、不重启服务，所以没有等待窗口，也不会卡住输入法。
-            ok = self.cfg.reload(wait=True)
-            QMessageBox.information(
-                self, "已应用",
-                "配置已保存并立即生效。" if ok else
-                "配置已保存，但输入法服务当前没有运行；\n"
-                "下次打字时它会自动启动并读取新设置。"
-            )
+            appearance_changed = self.cfg.weasel_style() != before
+            phrases_changed = list(self.phrases) != list(self._phrase_snapshot)
+            needs_deploy = self.cfg.appearance_needs_deploy()
+            plan = apply_plan(appearance_changed, phrases_changed, needs_deploy)
+            if plan == 'restart':
+                # 自定义词条是稳定词典，只在方案加载时读进引擎 —— 不重启服务，
+                # 新词条不会进候选。这一条是硬性的，跟外观不是一回事。
+                dialog = BusyDialog(
+                    self, '正在应用词条', '正在重启输入法服务…',
+                    '自定义词条是稳定词典，服务重启后才会出现在候选里。')
+                dialog.show()
+                QApplication.processEvents()
+                try:
+                    ok = self.cfg.restart_server()
+                finally:
+                    dialog.finish()
+                self._phrase_snapshot = list(self.phrases)
+                message = ("词条已保存，输入法服务已重启，新词条会出现在候选里。" if ok else
+                           "词条已保存，但服务没能重启；重新切换一次输入法后新词条才生效。")
+            elif appearance_changed:
+                # 候选窗现在会在每次应答时同步最新样式（WeaselPanel::Refresh 检测到
+                # 样式变化就重建布局重绘），热加载即可，不必重启服务、不打断输入。
+                dialog = BusyDialog(
+                    self, '正在应用外观', '正在刷新候选窗样式…',
+                    '配色、字体和圆角会直接应用到已经打开的候选窗，不用重启。')
+                dialog.show()
+                QApplication.processEvents()
+                try:
+                    if needs_deploy:
+                        self.cfg.deploy(wait=True)
+                    ok = self.cfg.reload(wait=True)
+                finally:
+                    dialog.finish()
+                message = ("外观已保存并立即生效，继续打字就能看到新候选窗。" if ok else
+                           "外观已保存；输入法服务当前没有运行，下次打字时会自动读取新外观。")
+            elif needs_deploy:
+                dialog = BusyDialog(self, '正在应用外观', '正在更新候选窗外观…',
+                                    '完成后，现有输入会话会重新读取所选配色。')
+                dialog.show()
+                QApplication.processEvents()
+                try:
+                    ok = self.cfg.deploy(wait=True)
+                finally:
+                    dialog.finish()
+                message = "配置已保存并立即生效。" if ok else "配置已保存，但部署没有完成。"
+            else:
+                ok = self.cfg.reload(wait=True)
+                message = ("配置已保存并立即生效。" if ok else
+                           "配置已保存，但输入法服务当前没有运行；\n"
+                           "下次打字时它会自动启动并读取新设置。")
+            QMessageBox.information(self, "已应用", message)
         return True
 
     def import_dict(self):

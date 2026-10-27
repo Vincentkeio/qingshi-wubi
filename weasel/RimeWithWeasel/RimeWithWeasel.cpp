@@ -30,6 +30,20 @@ static RimeApi* rime_api;
 // 这样外观/按键/候选数/标点这类设置才能真正即时生效。
 static RimeConfig* g_user_patch = nullptr;
 
+static bool _LoadFreshUserPatch(RimeConfig* config) {
+  std::ifstream stream(WeaselUserDataPath() / L"weasel.custom.yaml", std::ios::binary);
+  if (!stream)
+    return false;
+  std::string yaml((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+  if (!rime_api->config_init(config))
+    return false;
+  if (!rime_api->config_load_string(config, yaml.c_str())) {
+    rime_api->config_close(config);
+    return false;
+  }
+  return true;
+}
+
 // 调序相关的排查日志。glog 的级别在这台机器上被配置压住了，
 // 排查期间先用独立文件，能确定「执行到哪一步」就够。
 void ShadowTrace(const char* fmt, ...) {
@@ -193,6 +207,10 @@ void RimeWithWeaselHandler::Initialize() {
 
   RimeConfig config = {NULL};
   if (rime_api->config_open("weasel", &config)) {
+    RimeConfig user_config = {NULL};
+    const bool has_user = _LoadFreshUserPatch(&user_config);
+    if (has_user)
+      g_user_patch = &user_config;
     if (m_ui) {
       _UpdateUIStyle(&config, m_ui, true);
       _UpdateShowNotifications(&config, true);
@@ -205,7 +223,7 @@ void RimeWithWeaselHandler::Initialize() {
         const char* scheme_key = m_current_dark_mode
                                      ? "style/color_scheme_dark"
                                      : "style/color_scheme";
-        if (rime_api->config_get_string(&config, scheme_key, buffer, BUF_SIZE)) {
+        if (_GetStrPatched(&config, scheme_key, buffer, BUF_SIZE)) {
           const std::string color_name(buffer);
           const bool applied =
               _UpdateUIStyleColor(&config, m_ui->style(), color_name);
@@ -229,6 +247,10 @@ void RimeWithWeaselHandler::Initialize() {
                                   &m_show_notifications_time))
       m_show_notifications_time = 1200;
     _LoadAppOptions(&config, m_app_options);
+    if (has_user) {
+      g_user_patch = nullptr;
+      rime_api->config_close(&user_config);
+    }
     rime_api->config_close(&config);
   }
   m_last_schema_id.clear();
@@ -318,6 +340,10 @@ DWORD RimeWithWeaselHandler::RemoveSession(WeaselSessionId ipc_id) {
 void RimeWithWeaselHandler::UpdateColorTheme(BOOL darkMode) {
   RimeConfig config = {NULL};
   if (rime_api->config_open("weasel", &config)) {
+    RimeConfig user_config = {NULL};
+    const bool has_user = _LoadFreshUserPatch(&user_config);
+    if (has_user)
+      g_user_patch = &user_config;
     if (m_ui) {
       _UpdateUIStyle(&config, m_ui, true);
       m_current_dark_mode = darkMode;
@@ -326,12 +352,16 @@ void RimeWithWeaselHandler::UpdateColorTheme(BOOL darkMode) {
         char buffer[BUF_SIZE + 1] = {0};
         const char* scheme_key = darkMode ? "style/color_scheme_dark"
                                          : "style/color_scheme";
-        if (rime_api->config_get_string(&config, scheme_key, buffer, BUF_SIZE)) {
+        if (_GetStrPatched(&config, scheme_key, buffer, BUF_SIZE)) {
           std::string color_name(buffer);
           _UpdateUIStyleColor(&config, m_ui->style(), color_name);
         }
       }
       m_base_style = m_ui->style();
+    }
+    if (has_user) {
+      g_user_patch = nullptr;
+      rime_api->config_close(&user_config);
     }
     rime_api->config_close(&config);
   }
@@ -914,7 +944,8 @@ size_t RimeWithWeaselHandler::_ToOriginalIndex(WeaselSessionId ipc_id,
   return display_index;
 }
 
-bool RimeWithWeaselHandler::ReloadConfig() {  if (m_disabled) {
+bool RimeWithWeaselHandler::ReloadConfig() {
+  if (m_disabled) {
     LOG(INFO) << "ReloadConfig skipped: handler disabled";
     return false;
   }
@@ -927,7 +958,7 @@ bool RimeWithWeaselHandler::ReloadConfig() {  if (m_disabled) {
   // 注意用 config_open("weasel.custom") 而不是 user_config_open("weasel")：
   // 后者只找 user_dir 里的 weasel.yaml（我们这里是 weasel.custom.yaml）。
   RimeConfig user_config = {NULL};
-  const bool has_user = rime_api->config_open("weasel.custom", &user_config);
+  const bool has_user = _LoadFreshUserPatch(&user_config);
   if (has_user)
     g_user_patch = &user_config;
 
@@ -974,11 +1005,23 @@ bool RimeWithWeaselHandler::ReloadConfig() {  if (m_disabled) {
 
   for (auto& pair : m_session_status_map) {
     SessionStatus& status = pair.second;
-    if (status.session_id)
-      _LoadSchemaSpecificSettings(pair.first, std::string());
+    status.style = m_base_style;
+    RIME_STRUCT(RimeStatus, current);
+    if (status.session_id && rime_api->get_status(status.session_id, &current)) {
+      if (current.schema_id && std::string(current.schema_id) != ".default")
+        _LoadSchemaSpecificSettings(pair.first, current.schema_id);
+      rime_api->free_status(&current);
+    }
+    // Candidate panels live in host processes. They must receive fresh style
+    // data on their next response even when the schema did not change.
+    status.__synced = false;
   }
 
   _UpdateUI(0);
+  ShadowTrace("[reload] done back=0x%08X hilite=0x%08X font_point=%d sessions=%zu",
+              static_cast<unsigned>(m_base_style.back_color),
+              static_cast<unsigned>(m_base_style.hilited_candidate_back_color),
+              m_base_style.font_point, m_session_status_map.size());
   LOG(ERROR) << "[reload] done (no deployment)";
   return true;
 }
@@ -1522,7 +1565,7 @@ static Bool _RimeGetColor(RimeConfig* config,
                           const ColorFormat& fmt,
                           const unsigned int& fallback) {
   char color[256] = {0};
-  if (!rime_api->config_get_string(config, key.c_str(), color, 256)) {
+  if (!_GetStrPatched(config, key.c_str(), color, 256)) {
     value = fallback;
     return False;
   }
@@ -1882,10 +1925,20 @@ void LoadWeaselUIStyle(RimeConfig* config,
   // get color scheme
   const int BUF_SIZE = 255;
   char buffer[BUF_SIZE + 1] = {0};
-  if ((initialize && rime_api->config_get_string(config, "style/color_scheme",
+  if ((initialize && _GetStrPatched(config, "style/color_scheme",
                                                  buffer, BUF_SIZE)) ||
       !color_scheme.empty())
     _UpdateUIStyleColor(config, style, color_scheme);
+}
+
+void LoadWeaselUIStyleWithPatch(RimeConfig* config, RimeConfig* user_patch,
+                               UIStyle& style) {
+  struct PatchScope {
+    RimeConfig* previous;
+    ~PatchScope() { g_user_patch = previous; }
+  } scope{g_user_patch};
+  g_user_patch = user_patch;
+  LoadWeaselUIStyle(config, style, true);
 }
 
 static void _UpdateUIStyle(RimeConfig* config, UI* ui, bool initialize) {
@@ -1904,7 +1957,7 @@ static bool _UpdateUIStyleColor(RimeConfig* config,
   char buffer[BUF_SIZE + 1] = {0};
   std::string color_mark = "style/color_scheme";
   // color scheme
-  if (rime_api->config_get_string(config, color_mark.c_str(), buffer,
+  if (_GetStrPatched(config, color_mark.c_str(), buffer,
                                   BUF_SIZE) ||
       !color.empty()) {
     std::string prefix("preset_color_schemes/");

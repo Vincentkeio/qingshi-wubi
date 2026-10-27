@@ -57,6 +57,7 @@ speller:
 
 translator:
   dictionary: wubi06
+  enable_user_dict: false
   enable_charset_filter: true
   enable_sentence: false
   enable_encoder: false
@@ -93,6 +94,7 @@ custom_phrase:
   dictionary: ""
   user_dict: custom_phrase
   db_class: stabledb
+  enable_user_dict: true
   enable_completion: false
   enable_sentence: false
   initial_quality: 99

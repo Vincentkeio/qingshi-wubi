@@ -380,6 +380,40 @@ void RimeWithWeaselHandler::UpdateColorTheme(BOOL darkMode) {
   m_ui->style() = get_session_status(m_active_session).style;
 }
 
+bool RimeWithWeaselHandler::_NoCandidateBeepEnabled() {
+  // 默认开启：注册表里没有这个值也当作开着。
+  DWORD value = 1;
+  DWORD size = sizeof(value);
+  if (::RegGetValueW(HKEY_CURRENT_USER, L"Software\\Rime\\Weasel",
+                     L"QingshiBeepOnNoCandidate", RRF_RT_REG_DWORD, nullptr,
+                     &value, &size) != ERROR_SUCCESS)
+    return true;
+  return value != 0;
+}
+
+void RimeWithWeaselHandler::_BeepIfNoCandidate(RimeSessionId session_id) {
+  if (!session_id || !_NoCandidateBeepEnabled())
+    return;
+  RIME_STRUCT(RimeContext, ctx);
+  if (!rime_api->get_context(session_id, &ctx))
+    return;
+  const std::string code = _CurrentCode(ctx);
+  const bool empty = ctx.menu.num_candidates == 0;
+  rime_api->free_context(&ctx);
+  if (code.size() < 4 || !empty) {
+    // 退格、上屏、换编码都会走到这里：清掉记录，下次打错还能再响。
+    m_beeped_code.clear();
+    return;
+  }
+  // 打满四码还是空的时候，用户往往接着按第五个键或方向键 —— 同一个编码
+  // 只响一次，免得连环响。
+  if (code == m_beeped_code)
+    return;
+  m_beeped_code = code;
+  ::MessageBeep(MB_ICONEXCLAMATION);
+  ShadowTrace("[beep] no candidate for code=%s", code.c_str());
+}
+
 BOOL RimeWithWeaselHandler::ProcessKeyEvent(KeyEvent keyEvent,
                                             WeaselSessionId ipc_id,
                                             EatLine eat) {
@@ -444,6 +478,9 @@ BOOL RimeWithWeaselHandler::ProcessKeyEvent(KeyEvent keyEvent,
   }
   _Respond(ipc_id, eat);
   _UpdateUI(ipc_id);
+  // 输入法确实吃下了这个键，才检查「四码无候选」。
+  if (handled)
+    _BeepIfNoCandidate(session_id);
   m_active_session = ipc_id;
   return (BOOL)handled;
 }

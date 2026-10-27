@@ -102,6 +102,13 @@ class RimeWithWeaselHandler : public weasel::RequestHandler {
 
   void _UpdateInlinePreeditStatus(WeaselSessionId ipc_id);
 
+  // ── 四码无候选提示音 ────────────────────────────────────────────
+  // 五笔打满 4 码却一个字都出不来，基本是打错了。响一声提醒，但不打断输入。
+  // 开关在 HKCU\Software\Rime\Weasel\QingshiBeepOnNoCandidate，缺省视为开启。
+  void _BeepIfNoCandidate(RimeSessionId session_id);
+  static bool _NoCandidateBeepEnabled();
+  std::string m_beeped_code;  // 已经响过的编码，同一个码不重复响
+
   // ── 候选调序（shadow 层）─────────────────────────────────────────
   // 规则存在 %APPDATA%\QingshiWubi\shadow\<方案>.yaml，**不改原词库**，
   // 也不触发部署；候选装配完在最后应用，所以压得住词频重排。

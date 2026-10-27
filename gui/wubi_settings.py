@@ -28,7 +28,7 @@ except ImportError:
     yaml = None
 
 APP_NAME = "青石五笔输入法"
-APP_VER = "1.0.8"
+APP_VER = "1.0.9"
 from app_paths import user_directory, runtime_directories
 RIME_DIR = user_directory()
 WEASEL_CANDIDATES = runtime_directories()
@@ -214,6 +214,28 @@ class RimeConfig:
     # ---- Shift+字母直出（全局开关，存在注册表） ----
     REG_PATH = r"Software\Rime\Weasel"
     REG_NAME = "QingshiShiftLetterDirect"
+    REG_BEEP = "QingshiBeepOnNoCandidate"
+
+    def no_candidate_beep(self):
+        """四码无候选提示音。默认开启：注册表里没有这个值也算开。"""
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, self.REG_PATH) as k:
+                value, _ = winreg.QueryValueEx(k, self.REG_BEEP)
+                return bool(value)
+        except Exception:
+            return True
+
+    def set_no_candidate_beep(self, enabled):
+        try:
+            import winreg
+            with winreg.CreateKeyEx(
+                    winreg.HKEY_CURRENT_USER, self.REG_PATH, 0, winreg.KEY_WRITE) as k:
+                winreg.SetValueEx(k, self.REG_BEEP, 0, winreg.REG_DWORD,
+                                  1 if enabled else 0)
+            return True
+        except Exception:
+            return False
 
     def shift_letter_direct(self):
         try:
@@ -1117,6 +1139,11 @@ class MainWindow(QMainWindow):
         self.chk_i.setToolTip("输入编码显示在当前光标位置")
         candidate_layout.addWidget(self.chk_h)
         candidate_layout.addWidget(self.chk_i)
+        self.chk_beep = QCheckBox("四码无候选时提示音")
+        self.chk_beep.setAccessibleName("四码没有候选时播放提示音")
+        self.chk_beep.setToolTip(
+            "打满 4 码却一个候选都没有时响一声，提醒编码打错了；默认开启")
+        candidate_layout.addWidget(self.chk_beep)
         candidate_layout.addStretch(1)
         preferences = QHBoxLayout()
         preferences.setSpacing(28)
@@ -1760,6 +1787,7 @@ class MainWindow(QMainWindow):
         st = self.cfg.weasel_style()
         self.chk_h.setChecked(st["horizontal"])
         self.chk_i.setChecked(st["inline_preedit"])
+        self.chk_beep.setChecked(self.cfg.no_candidate_beep())
         idx = self.combo_scheme.findData(st["color_scheme"])
         if idx < 0:
             idx = 0
@@ -1796,6 +1824,7 @@ class MainWindow(QMainWindow):
                 "shift_toggle": self.chk_shift_commit.isChecked(),
             })
             self.cfg.set_shift_letter_direct(self.chk_shift_direct.isChecked())
+            self.cfg.set_no_candidate_beep(self.chk_beep.isChecked())
             self.cfg.write_weasel({
                 "color_scheme": self.combo_scheme.currentData(),
                 "font_face": self.combo_font.currentText(),

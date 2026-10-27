@@ -49,6 +49,9 @@ class SaveFlowTests(unittest.TestCase):
                                          return_value=patches.pop('needs_deploy', False)),
             'info': patch.object(ws.QMessageBox, 'information'),
             'dialog': patch.object(ws, 'BusyDialog'),
+            # 这两项写真实注册表，测试里必须挡住。
+            'beep': patch.object(self.win.cfg, 'set_no_candidate_beep', return_value=True),
+            'shift': patch.object(self.win.cfg, 'set_shift_letter_direct', return_value=True),
         }
         started = {k: v.start() for k, v in context.items()}
         self.addCleanup(lambda: [v.stop() for v in context.values()])

@@ -38,7 +38,9 @@ class SaveFlowTests(unittest.TestCase):
         self.addCleanup(self.win.deleteLater)
         self.win.cfg = ws.RimeConfig(self.temp.name)
         self.win.cfg.write_weasel(BASE_STYLE)
-        self.win.load()
+        # 提示音开关读的是真实注册表，测试里固定成「默认开启」。
+        with patch.object(self.win.cfg, 'no_candidate_beep', return_value=True):
+            self.win.load()
 
     def _save(self, **patches):
         context = {
@@ -81,6 +83,13 @@ class SaveFlowTests(unittest.TestCase):
         self.assertTrue(calls['restart_server'].called, '词条是稳定词典，必须重启才生效')
         message = calls['info'].call_args.args[2]
         self.assertIn('词条', message)
+
+    def test_no_candidate_beep_is_a_setting_and_defaults_on(self):
+        self.assertEqual(self.win.chk_beep.text(), '四码无候选时提示音')
+        self.assertTrue(self.win.chk_beep.isChecked(), '提示音默认开启')
+        self.win.chk_beep.setChecked(False)
+        calls = self._save()
+        calls['beep'].assert_called_with(False)
 
 
 if __name__ == '__main__':

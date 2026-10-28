@@ -67,8 +67,7 @@ class InstallerWindow(Panel):
                            w32.WS_CLIPCHILDREN)
         style = w32.WS_POPUP | w32.WS_CAPTION | w32.WS_SYSMENU | w32.WS_CLIPCHILDREN
         window_w, window_h = ui.client_window_size(W_DESIGN, H_DESIGN, style)
-        user32.SetWindowPos(self.hwnd, None, 0, 0, window_w, window_h,
-                            w32.SWP_NOZORDER | w32.SWP_NOACTIVATE)
+        ui.center_on_monitor(self.hwnd, window_w, window_h)
         self.brand = "青石五笔输入法"
         self.version = "v" + VERSION
 
@@ -98,8 +97,8 @@ class InstallerWindow(Panel):
             self,
             "完整卸载会删除上述用户数据，无法恢复。其他 Rime 方案的数据会保留。" if uninstall
             else "安装需要管理员权限；检测到旧版青石时会迁移已有设置。",
-            (40, 390, 600, 40), px=11, color=ui.MUTED, multiline=True)
-        self.progress_label = Label(self, "", (40, 424, 600, 40), px=12, color=ui.MUTED,
+            (40, 390, 600, 32), px=11, color=ui.MUTED, multiline=True)
+        self.progress_label = Label(self, "", (40, 432, 600, 36), px=12, color=ui.MUTED,
                                     multiline=True)
         self.progress = ProgressBar(self, (40, 472, 600, 6))
 
@@ -115,7 +114,6 @@ class InstallerWindow(Panel):
         rect = w32.RECT()
         user32.GetClientRect(self.hwnd, ctypes.byref(rect))
         height = int(rect.bottom / (ui.SCALE or 1))
-        y = height - 58
         y = height - 28 - 36
         self.btn_start.move(W_DESIGN - 40 - 114, y, 114, 36)
         self.btn_wizard.move(W_DESIGN - 40 - 114 - 10 - 130, y, 130, 36)

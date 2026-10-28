@@ -3,8 +3,8 @@
   "platform": "Windows 10/11 x64",
   "installer": {
     "name": "QingshiSetup.exe",
-    "size": 26040375,
-    "sha256": "4a0fe86aa1c3e40db96dd0050f19a6ad286e9acec360f717f86492482272069c"
+    "size": 26040991,
+    "sha256": "bc8a144e9f13cc30ca6e8d092a90079cdfcd35af5fd604e9b509ce956937cdb5"
   },
   "upstream_weasel": "82b50c9e9b9ee0bd31357db6f25ddc804546c7f7",
   "librime_binary_revision": "33e7814",
@@ -40,7 +40,8 @@
     "按原版黑白灰界面对齐品牌图标、导航、方案卡片、表单与按钮，并重新整理关于页文案",
     "修复安装窗口关闭后进程不退出、配置向导入口和后台更新入口的原生迁移问题",
     "保留三套五笔方案、自定义词条和词序、配置备份、自定义快捷键与更新检查",
-    "保留 1.0.16 的方案菜单热键清理，F4 不再被方案菜单占用"
+    "保留 1.0.16 的方案菜单热键清理，F4 不再被方案菜单占用",
+    "设置中心、安装和卸载窗口在当前显示器可用区域居中，修复完成状态文字被提示区遮挡的问题"
   ],
   "validation": {
     "automated_tests": 61,
@@ -49,11 +50,12 @@
     "qt_runtime_absent": "verified in both executable archives and payload",
     "native_ui_preview": "8 settings pages at 100% and 150%; minimum window; installer/uninstaller preview states",
     "local_installation": "native 1.0.16 build installed successfully with settings preserved; 1.0.17 entry routing covered by regression tests",
-    "native_engine_binaries": "unchanged from local 1.0.16; hashes recorded above"
+    "native_engine_binaries": "unchanged from local 1.0.16; hashes recorded above",
+    "installer_centering_and_text": "settings/installer/uninstaller passed at 100%, 125%, 150% and 200%; settings fits monitor work area; no overlapping notice/progress text"
   },
   "settings": {
     "path": "runtime/settings/QingshiSettings.exe",
-    "size": 2233923,
-    "sha256": "c6675a18648144c0fd65b365a84bfccfbad63262bf1852ac2411d0704daa6452"
+    "size": 2234985,
+    "sha256": "052ca0a8e9467b7bfdbb7837ca9f9a3d1e1d4752b8667621bf4ec19de22a1d37"
   }
 }

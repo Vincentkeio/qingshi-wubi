@@ -56,6 +56,34 @@ def client_window_size(width, height, style):
     return rect.right - rect.left, rect.bottom - rect.top
 
 
+def center_on_monitor(hwnd, width, height, fit=False):
+    """Center an outer window in the cursor monitor's work area (not the desktop origin)."""
+    class MonitorInfo(ctypes.Structure):
+        _fields_ = [("cbSize", wt.DWORD), ("monitor", RECT),
+                    ("work", RECT), ("flags", wt.DWORD)]
+
+    user32.MonitorFromPoint.argtypes = [wt.POINT, wt.DWORD]
+    user32.MonitorFromPoint.restype = wt.HANDLE
+    user32.GetMonitorInfoW.argtypes = [wt.HANDLE, ctypes.POINTER(MonitorInfo)]
+    point = wt.POINT()
+    user32.GetCursorPos(ctypes.byref(point))
+    monitor = user32.MonitorFromPoint(point, 2)  # MONITOR_DEFAULTTONEAREST
+    info = MonitorInfo()
+    info.cbSize = ctypes.sizeof(info)
+    if user32.GetMonitorInfoW(monitor, ctypes.byref(info)):
+        work = info.work
+    else:
+        work = RECT()
+        user32.SystemParametersInfoW(w32.SPI_GETWORKAREA, 0, ctypes.byref(work), 0)
+    if fit:
+        width = min(width, work.right - work.left)
+        height = min(height, work.bottom - work.top)
+    x = work.left + max(0, (work.right - work.left - width) // 2)
+    y = work.top + max(0, (work.bottom - work.top - height) // 2)
+    user32.SetWindowPos(hwnd, None, x, y, width, height,
+                        w32.SWP_NOZORDER | w32.SWP_NOACTIVATE)
+
+
 def _ptr(text):
     """把 Python 字符串转成 SendMessage 能用的 LPARAM。"""
     return ctypes.cast(ctypes.c_wchar_p(text), ctypes.c_void_p).value

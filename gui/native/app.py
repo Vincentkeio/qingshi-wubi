@@ -285,6 +285,7 @@ class App:
         self.phrase_snapshot = []
         self.switch(0)
         self.load()
+        ui.center_on_monitor(self.hwnd, window_w, window_h, fit=True)
 
     # ---- 窗口消息 ----
     def on_message(self, msg, wparam, lparam):

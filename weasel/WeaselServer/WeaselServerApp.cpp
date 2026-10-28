@@ -1,8 +1,11 @@
 #include "stdafx.h"
 #include "WeaselServerApp.h"
 #include <QingshiVersion.h>
+#include <commctrl.h>
 #include <filesystem>
 #include <thread>
+
+#pragma comment(lib, "comctl32.lib")
 
 #include "QingshiUpdate.h"
 
@@ -60,6 +63,55 @@ int WeaselServerApp::Run() {
 
 namespace {
 
+constexpr int kDownloadFromWebsite = 100;
+constexpr int kDownloadFromGitHub = 101;
+
+// 发现新版本时给两个下载入口：官网 + GitHub 发布页。
+// 优先用任务对话框（能写清楚两个按钮各去哪），拿不到 comctl32 v6 时退回 MessageBox。
+void AskWhereToDownload(const std::wstring& version,
+                        const std::wstring& current,
+                        const std::wstring& release_url) {
+  const std::wstring instruction =
+      L"发现新版本 v" + version + L"（当前 v" + current + L"）";
+
+  TASKDIALOGCONFIG config{};
+  config.cbSize = sizeof(config);
+  config.dwFlags = TDF_USE_COMMAND_LINKS | TDF_ALLOW_DIALOG_CANCELLATION;
+  config.dwCommonButtons = TDCBF_CANCEL_BUTTON;
+  config.pszWindowTitle = L"青石五笔有更新";
+  config.pszMainIcon = TD_INFORMATION_ICON;
+  config.pszMainInstruction = instruction.c_str();
+  config.pszContent =
+      L"选择从哪里下载安装包。升级后请重新打开正在使用的程序。";
+  const TASKDIALOG_BUTTON buttons[] = {
+      {kDownloadFromWebsite, L"从官网下载\nqingshi.funnyai.wiki"},
+      {kDownloadFromGitHub,
+       L"从 GitHub 下载\ngithub.com/Vincentkeio/qingshi-wubi"},
+  };
+  config.pButtons = buttons;
+  config.cButtons = ARRAYSIZE(buttons);
+
+  int pressed = 0;
+  if (SUCCEEDED(TaskDialogIndirect(&config, &pressed, nullptr, nullptr))) {
+    if (pressed == kDownloadFromWebsite)
+      WeaselServerApp::open(fs::path(QINGSHI_WEBSITE_URL));
+    else if (pressed == kDownloadFromGitHub)
+      WeaselServerApp::open(fs::path(release_url));
+    return;
+  }
+
+  // 兜底：任务对话框不可用时用三个按钮，文案里写清每个按钮去哪
+  const std::wstring text =
+      instruction + L"。\n\n是：打开官网下载页\n否：打开 GitHub 发布页\n取消：稍后再说";
+  const int answer = MessageBoxW(nullptr, text.c_str(), L"青石五笔有更新",
+                                 MB_YESNOCANCEL | MB_ICONINFORMATION |
+                                     MB_SETFOREGROUND);
+  if (answer == IDYES)
+    WeaselServerApp::open(fs::path(QINGSHI_WEBSITE_URL));
+  else if (answer == IDNO)
+    WeaselServerApp::open(fs::path(release_url));
+}
+
 // 真正的检查与提示，跑在后台线程里，避免网络卡住托盘菜单和输入法消息循环
 void ShowUpdateResult() {
   const qingshi::UpdateInfo info = qingshi::CheckLatestRelease(QINGSHI_VERSION);
@@ -71,12 +123,7 @@ void ShowUpdateResult() {
       const std::wstring url = string_to_wstring(info.release_url, CP_UTF8);
       LOG(INFO) << "update available: v" << info.version << " ("
                 << info.release_url << ")";
-      const std::wstring text = L"发现新版本 v" + version + L"（当前 v" + current +
-                                L"）。\n\n是否打开官方发布页？";
-      if (MessageBoxW(nullptr, text.c_str(), L"青石五笔有更新",
-                      MB_YESNO | MB_ICONINFORMATION | MB_SETFOREGROUND) == IDYES) {
-        WeaselServerApp::open(fs::path(url));
-      }
+      AskWhereToDownload(version, current, url);
       break;
     }
     case qingshi::UpdateInfo::kUpToDate: {

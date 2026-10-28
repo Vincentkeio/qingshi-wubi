@@ -249,17 +249,14 @@ program_files:
       File "WeaselDeployer.exe"
       File "WeaselServer.exe"
       File "rime.dll"
-      File "WinSparkle.dll"
     ${ElseIf} ${IsNativeAMD64}
       File "WeaselDeployer.exe"
       File "WeaselServer.exe"
       File "rime.dll"
-      File "WinSparkle.dll"
     ${Else}
       File "Win32\WeaselDeployer.exe"
       File "Win32\WeaselServer.exe"
       File "Win32\rime.dll"
-      File "Win32\WinSparkle.dll"
     ${Endif}
   ; install x64 build for NativeAMD64_BELLOW_WINDOWS11
   ${Else} ; Windows 10 or bellow
@@ -267,12 +264,10 @@ program_files:
       File "WeaselDeployer.exe"
       File "WeaselServer.exe"
       File "rime.dll"
-      File "WinSparkle.dll"
     ${Else}
       File "Win32\WeaselDeployer.exe"
       File "Win32\WeaselServer.exe"
       File "Win32\rime.dll"
-      File "Win32\WinSparkle.dll"
     ${Endif}
   ${Endif}
 

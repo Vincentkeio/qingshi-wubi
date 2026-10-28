@@ -9,6 +9,9 @@ from config_bundle import snapshot, inspect, restore
 from fixed_order import atomic_write
 from update_checker import UpdateChecker
 
+# 检查到更新时给两个下载入口：官网 + GitHub 发布页
+OFFICIAL_WEBSITE = 'https://qingshi.funnyai.wiki/'
+
 
 class CheckWorker(QThread):
     ready = pyqtSignal(object)
@@ -176,11 +179,18 @@ class BackupPage(QWidget):
         self.update_status.setText('发现新版本 v' + result['version'])
         if self.pending_close:
             return
-        answer = QMessageBox.question(self, '青石五笔有更新',
-            '发现 v' + result['version'] + '，是否打开官方发布页？',
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.Yes)
-        if answer == QMessageBox.StandardButton.Yes:
+        box = QMessageBox(self)
+        box.setWindowTitle('青石五笔有更新')
+        box.setText('发现新版本 v' + result['version'])
+        box.setInformativeText('选择从哪里下载安装包。升级后请重新打开正在使用的程序。')
+        website = box.addButton('从官网下载', QMessageBox.ButtonRole.AcceptRole)
+        github = box.addButton('从 GitHub 下载', QMessageBox.ButtonRole.ActionRole)
+        box.addButton('稍后再说', QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is website:
+            QDesktopServices.openUrl(QUrl(OFFICIAL_WEBSITE))
+        elif clicked is github:
             QDesktopServices.openUrl(QUrl(result['url']))
 
     def update_failed(self, error, manual):

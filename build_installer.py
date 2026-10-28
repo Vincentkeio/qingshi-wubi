@@ -14,7 +14,8 @@ OUTPUT = ROOT / 'weasel/output'
 
 def build_payload():
     entries = {}
-    for name in ('WeaselServer.exe', 'WeaselDeployer.exe', 'weaselx64.dll', 'qingshi_game.ime', 'rime.dll', 'WinSparkle.dll',
+    # WinSparkle.dll 不再打进安装包：小狼毫的更新模块已在 1.0.11 移除，exe 不再引用它。
+    for name in ('WeaselServer.exe', 'WeaselDeployer.exe', 'weaselx64.dll', 'qingshi_game.ime', 'rime.dll',
                  'start_service.bat', 'stop_service.bat'):
         entries['runtime/' + name] = OUTPUT / name
     entries['runtime/data/weasel.yaml'] = OUTPUT / 'data/weasel.yaml'

@@ -1,10 +1,10 @@
 {
-  "version": "1.0.11",
+  "version": "1.0.12",
   "platform": "Windows 10/11 x64",
   "installer": {
     "name": "QingshiSetup.exe",
-    "size": 45843613,
-    "sha256": "3929ab1cddaae13d0aadd6a2ca98cf8595b9ec8383fe1294fe0c877dd60c188a"
+    "size": 44658794,
+    "sha256": "6481e14d6860fecc47cafcdcdaa49e851d12236023f99a59a87eab945a36c1a1"
   },
   "upstream_weasel": "82b50c9e9b9ee0bd31357db6f25ddc804546c7f7",
   "librime_binary_revision": "33e7814",
@@ -15,8 +15,8 @@
   "engine": "Weasel / Rime",
   "native": {
     "WeaselServer.exe": {
-      "size": 2547200,
-      "sha256": "21a57251dd23a555bcf74d8989bec18e6354d4872ac4d901b8ca0b9245f85640"
+      "size": 2548736,
+      "sha256": "8b838a5eb5bf353654659103065e896eb5ef630e4a27a01b460e1adc33ca4721"
     },
     "WeaselDeployer.exe": {
       "size": 1297408,
@@ -36,15 +36,16 @@
     }
   },
   "changes": [
-    "检查新版本改为只查青石自己的 GitHub 正式发布，规则与设置中心「备份与更新」完全一致",
+    "检查到新版本时提供两个下载入口：从官网下载、从 GitHub 下载（安装包与发布页任选）",
+    "检查新版本只查青石自己的 GitHub 正式发布，规则与设置中心「备份与更新」一致",
     "彻底移除小狼毫的 WinSparkle 更新模块：不再读取 rime.im 的更新源，也不会下载或执行任何安装包",
-    "检查更新在后台线程执行，网络慢不会卡住托盘菜单和输入法；只提示并打开官方发布页，不自动安装",
-    "托盘与语言栏的「帮助文档 / 参加讨论」改为青石自己的使用说明与 GitHub Issues，不再导向 rime.im"
+    "安装包去掉已经用不到的 WinSparkle.dll，体积减少约 1 MB",
+    "托盘与语言栏的「帮助文档 / 参加讨论」改为青石自己的使用说明与 GitHub Issues"
   ],
   "validation": {
     "installer_and_compatibility_tests": 21,
     "config_and_save_flow_tests": 20,
-    "payload_files": 68,
+    "payload_files": 67,
     "native_imm_tests": "passed",
     "engine_regression": "passed",
     "fixed_order_repeat_selection": "3 schemas x 40 picks, order unchanged",
@@ -54,6 +55,7 @@
     "packaged_preview": "passed",
     "lol_training_mode": "candidates and Chinese commit confirmed",
     "update_check_source": "GitHub releases/latest only; WinSparkle and rime.im feed removed",
-    "update_check_dialog": "manual check returns 当前已是最新正式版本 for the current build"
+    "update_check_dialog": "manual check returns 当前已是最新正式版本 for the current build",
+    "update_check_choices": "two download entries: official website and GitHub release page"
   }
 }

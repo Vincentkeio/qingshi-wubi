@@ -15,7 +15,7 @@ from .w32 import (
 
 SCALE = 1.0
 APP_VERSION = ""
-FACE = "Microsoft YaHei UI"
+FACE = "Microsoft YaHei"
 FACE_MONO = "Consolas"
 
 # ---- 主题色（对齐原 Qt 版的黑白灰） ----
@@ -247,7 +247,7 @@ class Fonts:
         if key not in self._cache:
             self._cache[key] = gdi32.CreateFontW(
                 -s(px), 0, 0, 0, weight, 0, 0, 0, w32.DEFAULT_CHARSET, 0, 0,
-                w32.CLEARTYPE_QUALITY, 0, face or FACE)
+                w32.CLEARTYPE_NATURAL_QUALITY, 0, face or FACE)
         return self._cache[key]
 
 

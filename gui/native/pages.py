@@ -386,9 +386,10 @@ class CommonPage(Page):
                                        (self.lbl_punct, self.combo_punct, 122),
                                        (self.lbl_shift, self.chk_shift_commit, 150)):
             label.move(PAD, y + 8, left_w - ctrl_w - 12, 20)
-            control.move(PAD + left_w - ctrl_w, y, ctrl_w, 36)
-            y += 46 if control is not self.chk_shift_commit else 28
-        self.chk_shift_direct.move(PAD, y, left_w, 24)
+            is_shift = control is self.chk_shift_commit
+            control.move(PAD + left_w - ctrl_w, y, ctrl_w, 28 if is_shift else 36)
+            y += 40 if is_shift else 46
+        self.chk_shift_direct.move(PAD, y, left_w, 28)
 
         y = 354
         self.lbl_page.move(right_x, y + 8, right_w - 112, 20)
@@ -397,7 +398,7 @@ class CommonPage(Page):
         for chk in (self.chk_h, self.chk_i, self.chk_beep, self.chk_auto):
             chk.move(right_x, y, right_w, 24)
             y += 29
-        self.content_height = 542
+        self.content_height = 572
 
     def load(self):
         self.schema = self.cfg.current_schema()

@@ -327,10 +327,10 @@ void WeaselTSF::_HandleLangBarMenuSelect(UINT wID) {
       open(WeaselLogPath().wstring());
       break;
     case ID_WEASELTRAY_WIKI:
-      open(L"https://rime.im/docs/");
+      open(L"https://qingshi.funnyai.wiki/guide.html");
       break;
     case ID_WEASELTRAY_FORUM:
-      open(L"https://rime.im/discuss/");
+      open(L"https://github.com/Vincentkeio/qingshi-wubi/issues");
       break;
     default:
       m_client.TrayCommand(wID);

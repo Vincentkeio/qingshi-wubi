@@ -6,6 +6,8 @@ import time
 import urllib.request
 from fixed_order import atomic_write
 
+# releases/latest 的 API。未认证接口每小时 60 次、按出口 IP 算，被限流会返回 403，
+# 此时检查更新会提示「暂时无法检查更新」，属正常现象（老板 2026-10-28 决定保持此实现）。
 API = 'https://api.github.com/repos/Vincentkeio/qingshi-wubi/releases/latest'
 PREFIX = 'https://github.com/Vincentkeio/qingshi-wubi/releases/tag/'
 INTERVAL = 24 * 60 * 60

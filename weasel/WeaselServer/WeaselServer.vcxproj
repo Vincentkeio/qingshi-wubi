@@ -494,6 +494,9 @@
     <ClCompile Include="WeaselServerApp.cpp" />
     <ClCompile Include="WeaselService.cpp" />
     <ClCompile Include="WeaselTrayIcon.cpp" />
+    <ClCompile Include="QingshiUpdate.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h" />
@@ -502,6 +505,7 @@
     <ClInclude Include="WeaselServerApp.h" />
     <ClInclude Include="WeaselService.h" />
     <ClInclude Include="WeaselTrayIcon.h" />
+    <ClInclude Include="QingshiUpdate.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="WeaselServer.rc" />

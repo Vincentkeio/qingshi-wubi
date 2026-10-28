@@ -9,7 +9,6 @@
 #include <WeaselUI.h>
 #include <RimeWithWeasel.h>
 #include <WeaselUtility.h>
-#include <winsparkle.h>
 #include <functional>
 #include <ShellScalingApi.h>
 #include <WinUser.h>

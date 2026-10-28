@@ -1,10 +1,10 @@
 {
-  "version": "1.0.10",
+  "version": "1.0.11",
   "platform": "Windows 10/11 x64",
   "installer": {
     "name": "QingshiSetup.exe",
-    "size": 46212640,
-    "sha256": "2c0064f2371895fed0634d1e6106c9c47540f5fc3be9b2ac3f2a268f7219cc9a"
+    "size": 45843613,
+    "sha256": "3929ab1cddaae13d0aadd6a2ca98cf8595b9ec8383fe1294fe0c877dd60c188a"
   },
   "upstream_weasel": "82b50c9e9b9ee0bd31357db6f25ddc804546c7f7",
   "librime_binary_revision": "33e7814",
@@ -15,16 +15,16 @@
   "engine": "Weasel / Rime",
   "native": {
     "WeaselServer.exe": {
-      "size": 2529280,
-      "sha256": "bc3fd2eabbdbe7101570734589cf4ce266fa3add8ed0c8d32b77aaddf2501efd"
+      "size": 2547200,
+      "sha256": "21a57251dd23a555bcf74d8989bec18e6354d4872ac4d901b8ca0b9245f85640"
     },
     "WeaselDeployer.exe": {
       "size": 1297408,
-      "sha256": "9679c9f9bc04a1aa623c6e136b3846c6cd364c73936ea4b18d523a3219a5cffc"
+      "sha256": "3abcf7cdc8c5309540e04fa4c85a5eec9c847f79b67232731b10bcca9f0a8429"
     },
     "weaselx64.dll": {
       "size": 1215488,
-      "sha256": "3133133bc256071a7ed4f2d2778465fb9fd661b5a05928e5081f8dab03835440"
+      "sha256": "e92324dbcddf7597f7d1e82bbff323989c6e79d7d0f61352347b7bec6d44bfb2"
     },
     "qingshi_game.ime": {
       "size": 678400,
@@ -36,14 +36,10 @@
     }
   },
   "changes": [
-    "新增四码唯一自动上屏：打满 4 码只剩一个候选时直接上屏，默认关闭、可在候选设置里打开",
-    "四码无候选提示音：打满 4 码却没有候选时响一声，默认开启",
-    "外观热加载：候选窗在每次应答时同步最新样式，换配色/字体/圆角不必重启输入法",
-    "严格固定词序：三套方案关闭用户词典学习，反复选后序候选不再自动提前",
-    "候选窗调词序：右键置顶 / Ctrl+数字，规则写入 shadow 层，不改码表、不触发部署",
-    "配置导入导出：备份外观、自定义词条、自定义词库与码表、手动词序",
-    "自动检查更新：每天最多一次，只提示并打开官方发布页",
-    "游戏兼容：TSF 组件装进 System32 并从那里注册，补齐 IMM 兼容组件与注册残留清理"
+    "检查新版本改为只查青石自己的 GitHub 正式发布，规则与设置中心「备份与更新」完全一致",
+    "彻底移除小狼毫的 WinSparkle 更新模块：不再读取 rime.im 的更新源，也不会下载或执行任何安装包",
+    "检查更新在后台线程执行，网络慢不会卡住托盘菜单和输入法；只提示并打开官方发布页，不自动安装",
+    "托盘与语言栏的「帮助文档 / 参加讨论」改为青石自己的使用说明与 GitHub Issues，不再导向 rime.im"
   ],
   "validation": {
     "installer_and_compatibility_tests": 21,
@@ -56,6 +52,8 @@
     "unique_code_auto_commit": "4-key unique only, default off",
     "packaged_qt": "passed",
     "packaged_preview": "passed",
-    "lol_training_mode": "candidates and Chinese commit confirmed"
+    "lol_training_mode": "candidates and Chinese commit confirmed",
+    "update_check_source": "GitHub releases/latest only; WinSparkle and rime.im feed removed",
+    "update_check_dialog": "manual check returns 当前已是最新正式版本 for the current build"
   }
 }

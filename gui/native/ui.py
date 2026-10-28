@@ -120,10 +120,9 @@ _KEEP = []
 _CLASSES = {}
 
 
-def brand_mark(g, x, y, size):
-    """Draw the original PNG with Windows GDI+; no imaging runtime is required."""
-    from pathlib import Path
-    if "brand-image" not in _CLASSES:
+def _gdiplus():
+    """Share Windows' antialiased drawing engine and retain its startup token."""
+    if "gdiplus" not in _CLASSES:
         class Startup(ctypes.Structure):
             _fields_ = [("version", wt.UINT), ("debug", ctypes.c_void_p),
                         ("background", wt.BOOL), ("codecs", wt.BOOL)]
@@ -136,14 +135,57 @@ def brand_mark(g, x, y, size):
                                           ctypes.c_int, ctypes.c_int]
         api.GdipSetInterpolationMode.argtypes = [pointer, ctypes.c_int]
         api.GdipDeleteGraphics.argtypes = [pointer]
-        token, bitmap = pointer(), pointer()
+        api.GdipSetSmoothingMode.argtypes = [pointer, ctypes.c_int]
+        api.GdipCreateSolidFill.argtypes = [wt.DWORD, ctypes.POINTER(pointer)]
+        api.GdipFillEllipse.argtypes = [pointer, pointer, ctypes.c_float, ctypes.c_float,
+                                       ctypes.c_float, ctypes.c_float]
+        api.GdipDeleteBrush.argtypes = [pointer]
+        token = pointer()
         api.GdiplusStartup(ctypes.byref(token), ctypes.byref(Startup(1, None, False, False)), None)
+        _CLASSES["gdiplus"] = api, token
+    return _CLASSES["gdiplus"][0]
+
+
+def draw_radio(g, x, y, diameter, checked):
+    """Paint smooth circular edges at the current device resolution."""
+    api = _gdiplus()
+    graphics = ctypes.c_void_p()
+    api.GdipCreateFromHDC(g.hdc, ctypes.byref(graphics))
+    api.GdipSetSmoothingMode(graphics, 4)  # SmoothingModeAntiAlias
+
+    def disc(left, top, size, color):
+        brush = ctypes.c_void_p()
+        api.GdipCreateSolidFill(0xFF000000 | color, ctypes.byref(brush))
+        try:
+            api.GdipFillEllipse(graphics, brush, left, top, size, size)
+        finally:
+            api.GdipDeleteBrush(brush)
+
+    try:
+        outer = diameter - 1.0
+        edge = max(1.0, SCALE)
+        disc(x + 0.5, y + 0.5, outer, 0x252525 if checked else 0x929292)
+        disc(x + 0.5 + edge, y + 0.5 + edge, outer - 2 * edge, 0xFFFFFF)
+        if checked:
+            dot = 8.0 * SCALE
+            offset = (diameter - dot) / 2
+            disc(x + offset, y + offset, dot, 0x252525)
+    finally:
+        api.GdipDeleteGraphics(graphics)
+
+
+def brand_mark(g, x, y, size):
+    """Draw the original PNG with Windows GDI+; no imaging runtime is required."""
+    from pathlib import Path
+    if "brand-image" not in _CLASSES:
+        api = _gdiplus()
+        bitmap = ctypes.c_void_p()
         asset = Path(__file__).resolve().parent.parent / "qingshi-mark.png"
         status = api.GdipLoadImageFromFile(str(asset), ctypes.byref(bitmap))
         if status:
             raise OSError(f"Cannot load brand asset: {asset} (GDI+ {status})")
-        _CLASSES["brand-image"] = api, token, bitmap
-    api, token, bitmap = _CLASSES["brand-image"]
+        _CLASSES["brand-image"] = bitmap
+    api, bitmap = _gdiplus(), _CLASSES["brand-image"]
     graphics = ctypes.c_void_p()
     api.GdipCreateFromHDC(g.hdc, ctypes.byref(graphics))
     api.GdipSetInterpolationMode(graphics, 7)

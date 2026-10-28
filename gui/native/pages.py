@@ -58,14 +58,9 @@ class SchemaCard(Panel):
     def paint(self, g, width, height):
         bg = 0xE2E2E2 if self.checked else (0xE9E9E9 if self.hover else 0xF0F0F0)
         ui.w32.round_fill(g, (0, 0, width, height), s(8), bg)
-        r = s(9)
         cx, cy = s(15), s(13)
-        ui.w32.round_fill(g, (cx, cy, cx + 2 * r, cy + 2 * r), r, 0xFFFFFF)
-        ui.w32.round_stroke(g, (cx, cy, cx + 2 * r, cy + 2 * r), r,
-                            0x252525 if self.checked else 0xBABABA)
+        ui.draw_radio(g, cx, cy, s(18), self.checked)
         if self.checked:
-            ui.w32.round_fill(g, (cx + s(4), cy + s(4), cx + 2 * r - s(4), cy + 2 * r - s(4)),
-                              r - s(4), 0x252525)
             ui.w32.text(g, "当前默认", (width - s(84), s(14), width - s(16), s(32)),
                         ui.FONTS.get(11), ui.TEXT,
                         w32.DT_RIGHT | w32.DT_VCENTER | w32.DT_SINGLELINE)

@@ -28,7 +28,7 @@ except ImportError:
     yaml = None
 
 APP_NAME = "青石五笔输入法"
-APP_VER = "1.0.14"
+APP_VER = "1.0.15"
 from app_paths import user_directory, runtime_directories
 RIME_DIR = user_directory()
 WEASEL_CANDIDATES = runtime_directories()
@@ -185,31 +185,35 @@ class RimeConfig:
 
     def write_schema_switches(self, sid, values):
         """写入某方案的输入习惯默认值"""
-        lines = [
-            f"# 青石五笔 · {sid} 输入习惯",
-            "# 由设置中心生成；输入时仍可用快捷键临时切换",
-            "patch:",
-        ]
+        updates = {}
         for key, idx in self.SWITCH_INDEX.items():
-            lines.append(f"  switches/@{idx}/reset: {1 if values.get(key) else 0}")
+            updates[f"switches/@{idx}/reset"] = 1 if values.get(key) else 0
         commit = bool(values.get("shift_commit", True))
         toggle = bool(values.get("shift_toggle", True))
         # Rime 的 commit_code 本身就会连带切换中英模式（内核行为），
         # 所以「只上屏不切换」没有对应取值，勾了上屏就按 commit_code 处理。
-        if commit:
+        if commit and toggle:
             style = "commit_code"
         elif toggle:
             style = "inline_ascii"
         else:
             style = "noop"
-        lines.append(f"  ascii_composer/switch_key/Shift_L: {style}")
-        lines.append(f"  ascii_composer/switch_key/Shift_R: {style}")
-        lines.extend(["  translator/enable_user_dict: false",
-                      "  translator/enable_sentence: false",
-                      "  translator/enable_encoder: false",
-                      "  translator/encode_commit_history: false"])
-        with open(self.path(f"{sid}.custom.yaml"), "w", encoding="utf-8", newline="\n") as f:
-            f.write("\n".join(lines) + "\n")
+        updates['ascii_composer/switch_key/Shift_L'] = style
+        updates['ascii_composer/switch_key/Shift_R'] = style
+        for key in ('enable_user_dict','enable_sentence','enable_encoder','encode_commit_history'):
+            updates['translator/' + key] = False
+        self.merge_patch(f'{sid}.custom.yaml', updates)
+
+    def merge_patch(self, name, updates):
+        from pathlib import Path
+        from fixed_order import atomic_write
+        path = Path(self.path(name))
+        content = yaml.safe_load(path.read_text(encoding='utf-8')) if path.is_file() else {}
+        content = content or {}
+        if not isinstance(content, dict) or not isinstance(content.get('patch', {}), dict):
+            raise ValueError(name + '不是有效的配置文件')
+        content.setdefault('patch', {}).update(updates)
+        atomic_write(path, yaml.safe_dump(content, allow_unicode=True, sort_keys=False).encode('utf-8'))
 
     # ---- Shift+字母直出（全局开关，存在注册表） ----
     REG_PATH = r"Software\Rime\Weasel"
@@ -273,14 +277,10 @@ class RimeConfig:
 
     # 写配置
     def write_default(self, schema_id, page_size):
-        lines = ["# 五笔输入法 · 方案与候选设置", "patch:", "  schema_list:"]
         order = [schema_id] + [sid for sid, _, _ in SCHEMAS if sid != schema_id]
-        for sid in order:
-            lines.append(f"    - schema: {sid}")
-        lines.append("  menu:")
-        lines.append(f"    page_size: {page_size}")
-        with open(self.path("default.custom.yaml"), "w", encoding="utf-8", newline="\n") as f:
-            f.write("\n".join(lines) + "\n")
+        menu = dict((self.read_yaml('default.custom.yaml').get('patch') or {}).get('menu') or {})
+        menu['page_size'] = page_size
+        self.merge_patch('default.custom.yaml', {'schema_list':[{'schema':sid} for sid in order], 'menu':menu})
 
     # 皮肤预设：字段与 Weasel 的 preset_color_schemes 一一对应
     SKINS = {
@@ -1088,9 +1088,9 @@ class MainWindow(QMainWindow):
         self.combo_punct.setAccessibleName("标点符号风格")
         habit_row("标点符号", self.combo_punct)
 
-        self.chk_shift_commit = QCheckBox("按 Shift 上屏编码并切换中英文")
+        self.chk_shift_commit = QCheckBox("Shift 切换时上屏编码")
         self.chk_shift_commit.setToolTip(
-            "按 Shift 时把已输入的编码上屏为字母，同时切到英文模式（Rime 内核把两者绑在一起）")
+            "使用 Shift 切换中英文时，将已输入的编码作为字母上屏；取消则保留在预编辑区")
         self.chk_shift_commit.setAccessibleName("Shift 上屏编码并切换中英文")
         habit_row("Shift 键", self.chk_shift_commit)
 
@@ -1684,59 +1684,17 @@ class MainWindow(QMainWindow):
         self._shadow_save_and_reload()
 
     def page_hotkey(self):
-        w = QWidget()
-        lay = QVBoxLayout(w)
-        lay.setContentsMargins(28, 22, 28, 22)
-        lay.setSpacing(14)
-        h = QLabel("快捷键")
-        h.setObjectName("h1")
-        lay.addWidget(h)
-        s = QLabel("输入状态类快捷键可在输入时随时切换，改动立即生效")
-        s.setObjectName("desc")
-        lay.addWidget(s)
-        gb = QFrame()
-        gb.setObjectName("candidatePanel")
-        g = QVBoxLayout(gb)
-        g.setContentsMargins(16, 16, 16, 16)
-        g.setSpacing(9)
-        gb_title = QLabel("默认快捷键")
-        gb_title.setObjectName("sectionTitle")
-        g.addWidget(gb_title)
-        rows = [
-            ("中英文切换", "Shift"),
-            ("简繁转换", "Ctrl + Shift + F"),
-            ("简繁转换（备用）", "Ctrl + Shift + T"),
-            ("全角 / 半角", "Shift + 空格"),
-            ("中英标点", "Ctrl + ."),
-            ("增广字集", "Ctrl + Shift + 5"),
-            ("切换方案", "F4 或 Ctrl + `"),
-            ("候选翻页", "- / = 或 , / ."),
-            ("选词", "数字键 1-9 / 空格选第一"),
-            ("清空编码", "Esc"),
-            ("切换输入法", "Win + 空格"),
-            ("重新部署", "托盘图标右键 → 重新部署"),
-        ]
-        for k, v in rows:
-            row = QFrame()
-            row.setObjectName("shortcutRow")
-            row_layout = QHBoxLayout(row)
-            row_layout.setContentsMargins(12, 7, 12, 7)
-            row_layout.setSpacing(12)
-            label = QLabel(k)
-            value = QLabel(v)
-            value.setObjectName("shortcutChip")
-            value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            row_layout.addWidget(label, 1)
-            row_layout.addWidget(value)
-            g.addWidget(row)
-        lay.addWidget(gb)
+        from hotkey_page import HotkeyPage
+        self.hotkey_page = HotkeyPage()
+        self.hotkey_page.changed.connect(self.update_shift_shortcut_state)
+        return self.wrap_scroll(self.hotkey_page)
 
-        tip = QLabel("提示：简繁转换会按 OpenCC 规则把候选词输出为繁体，码表与候选顺序不变。")
-        tip.setObjectName("hint")
-        tip.setWordWrap(True)
-        lay.addWidget(tip)
-        lay.addStretch(1)
-        return self.wrap_scroll(w)
+    def update_shift_shortcut_state(self):
+        enabled = 'Shift' in self.hotkey_page.values()['ascii_mode']
+        self.chk_shift_commit.setEnabled(enabled)
+        self.chk_shift_commit.setToolTip(
+            'Shift 切换时，将编码作为字母上屏；取消则保留在预编辑区。'
+            if enabled else '中英文快捷键未使用 Shift；可在“快捷键”页设置。')
 
     def page_about(self):
         w = QWidget()
@@ -1807,6 +1765,17 @@ class MainWindow(QMainWindow):
             c.set_checked(k == self.cur_schema)
         self.spin_page.setValue(self.cfg.page_size())
         self.load_habits(self.cur_schema)
+        import hotkeys
+        try:
+            shortcuts = hotkeys.load(self.cfg.dir, self.cur_schema)
+            self.hotkey_page.set_values(shortcuts)
+            self._hotkey_snapshot = shortcuts
+        except ValueError as error:
+            self.hotkey_page.set_values(hotkeys.DEFAULTS)
+            self._hotkey_snapshot = None
+            self.hotkey_page.show_error(str(error))
+        self.update_shift_shortcut_state()
+        self._shortcut_shift_snapshot = self.chk_shift_commit.isChecked() and 'Shift' in self.hotkey_page.values()['ascii_mode']
 
         st = self.cfg.weasel_style()
         self.chk_h.setChecked(st["horizontal"])
@@ -1839,6 +1808,17 @@ class MainWindow(QMainWindow):
 
     def save(self, deploy=True):
         before = self.cfg.weasel_style()
+        import hotkeys
+        try:
+            shortcut_values = hotkeys.validate(self.hotkey_page.values())
+        except ValueError as error:
+            self.switch_page(5)
+            self.nav_list.setCurrentRow(5)
+            self.hotkey_page.show_error(str(error))
+            QMessageBox.warning(self, '快捷键未保存', str(error))
+            return False
+        shift_commit = self.chk_shift_commit.isChecked() and 'Shift' in shortcut_values['ascii_mode']
+        shortcuts_changed = shortcut_values != self._hotkey_snapshot or shift_commit != self._shortcut_shift_snapshot
         try:
             self.cfg.write_default(self.cur_schema, self.spin_page.value())
             self.cfg.write_schema_switches(self.cur_schema, {
@@ -1846,7 +1826,7 @@ class MainWindow(QMainWindow):
                 "full_shape": self.combo_shape.currentData(),
                 "ascii_punct": self.combo_punct.currentData(),
                 "shift_commit": self.chk_shift_commit.isChecked(),
-                "shift_toggle": self.chk_shift_commit.isChecked(),
+                "shift_toggle": 'Shift' in shortcut_values['ascii_mode'],
             })
             self.cfg.set_shift_letter_direct(self.chk_shift_direct.isChecked())
             self.cfg.set_no_candidate_beep(self.chk_beep.isChecked())
@@ -1861,6 +1841,8 @@ class MainWindow(QMainWindow):
             })
             from fixed_order import ensure_fixed_order
             ensure_fixed_order(self.cfg.dir)
+            if shortcuts_changed or self.cfg.exists(hotkeys.FILE):
+                hotkeys.apply(self.cfg.dir, shortcut_values, self.chk_shift_commit.isChecked())
         except Exception as e:
             QMessageBox.warning(self, "保存失败", str(e))
             return False
@@ -1869,7 +1851,24 @@ class MainWindow(QMainWindow):
             phrases_changed = list(self.phrases) != list(self._phrase_snapshot)
             needs_deploy = self.cfg.appearance_needs_deploy()
             plan = apply_plan(appearance_changed, phrases_changed, needs_deploy)
-            if plan == 'restart':
+            if shortcuts_changed or hotkeys.needs_deploy(self.cfg.dir):
+                dialog = BusyDialog(self, '正在应用快捷键', '正在更新输入法配置…',
+                                    '完成后，三套五笔方案会使用新的快捷键。')
+                dialog.show()
+                QApplication.processEvents()
+                try:
+                    ok = self.cfg.deploy(wait=True)
+                    if ok:
+                        ok = self.cfg.restart_server()
+                finally:
+                    dialog.finish()
+                if ok:
+                    self._hotkey_snapshot = shortcut_values
+                    self._shortcut_shift_snapshot = shift_commit
+                    self._phrase_snapshot = list(self.phrases)
+                message = ('快捷键已保存并生效。' if ok else
+                           '快捷键配置已保存，但没有完成应用；请再次点击“应用”重试。')
+            elif plan == 'restart':
                 # 自定义词条是稳定词典，只在方案加载时读进引擎 —— 不重启服务，
                 # 新词条不会进候选。这一条是硬性的，跟外观不是一回事。
                 dialog = BusyDialog(
@@ -1916,6 +1915,8 @@ class MainWindow(QMainWindow):
                            "配置已保存，但输入法服务当前没有运行；\n"
                            "下次打字时它会自动启动并读取新设置。")
             QMessageBox.information(self, "已应用", message)
+            if not ok and (shortcuts_changed or hotkeys.needs_deploy(self.cfg.dir)):
+                return False
         return True
 
     def import_dict(self):

@@ -16,7 +16,7 @@ FORMAT = 1
 MAX_FILE = 16 * 1024 * 1024
 MAX_TOTAL = 64 * 1024 * 1024
 SCHEMAS = ('wubi86', 'wubi98', 'wubi06')
-FILES = {'default.custom.yaml', 'weasel.custom.yaml', 'custom_phrase.txt',
+FILES = {'default.custom.yaml', 'weasel.custom.yaml', 'custom_phrase.txt', 'qingshi_hotkeys.yaml',
          'qingshi_pin_history.tsv'} | {
     schema + suffix for schema in SCHEMAS for suffix in
     ('.schema.yaml', '.dict.yaml', '.custom.yaml')
@@ -160,6 +160,9 @@ def restore(directory, data, shift_letter_direct=True):
                 text = entries[name].decode('utf-8-sig')
                 yaml.safe_load(text.split('\n...')[0] if name.endswith('.dict.yaml') else text)
         ensure_fixed_order(staged)
+        if (staged / 'qingshi_hotkeys.yaml').is_file():
+            import hotkeys
+            hotkeys.load(staged)
         for path in staged.rglob('*'):
             if path.is_file():
                 entries[path.relative_to(staged).as_posix()] = path.read_bytes()

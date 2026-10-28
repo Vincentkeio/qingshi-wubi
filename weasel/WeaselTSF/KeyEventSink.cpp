@@ -78,7 +78,8 @@ void WeaselTSF::_ProcessKeyEvent(WPARAM wParam, LPARAM lParam, BOOL* pfEaten) {
     // 规则写到 shadow_<方案>.yaml，服务端立刻重排并刷新，不部署、不重启。
     if (_status.composing && !(ke.mask & ibus::RELEASE_MASK) &&
         (ke.mask & ibus::CONTROL_MASK) && ke.keycode >= '1' &&
-        ke.keycode <= '9') {
+        ke.keycode <= '9' && !(ke.mask & (1 << 3)) &&
+        !((ke.mask & ibus::SHIFT_MASK) && ke.keycode == '5')) {
       const int action = (ke.mask & ibus::SHIFT_MASK) ? WEASEL_SHADOW_UNPIN
                                                       : WEASEL_SHADOW_PIN;
       const size_t idx = static_cast<size_t>(ke.keycode - '1');

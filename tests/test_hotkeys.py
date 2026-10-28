@@ -26,6 +26,21 @@ class HotkeyConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, '同时分配'):
             hotkeys.validate(values)
 
+    def test_schema_menu_hotkey_is_gone(self):
+        self.assertNotIn('schema', hotkeys.DEFAULTS)
+        self.assertNotIn('F4', [key for keys in hotkeys.DEFAULTS.values() for key in keys])
+        hotkeys.apply(self.root, hotkeys.DEFAULTS)
+        patch = yaml.safe_load((self.root / 'default.custom.yaml').read_text())['patch']
+        self.assertEqual(patch['switcher/hotkeys'], [])
+
+    def test_legacy_schema_binding_is_dropped(self):
+        values = deepcopy(hotkeys.DEFAULTS)
+        values['schema'] = ['F4', 'Control+grave']
+        self.assertEqual(hotkeys.validate(values), hotkeys.DEFAULTS)
+        (self.root / hotkeys.FILE).write_text(
+            yaml.safe_dump({'version': 1, 'bindings': values}, allow_unicode=True), encoding='utf-8')
+        self.assertEqual(hotkeys.load(self.root), hotkeys.DEFAULTS)
+
     def test_reserved_typing_and_system_keys_rejected(self):
         for value in ('a', 'Shift+A', 'Alt+F4', 'Control+space', 'Control+1', 'Control+Shift+2'):
             values = deepcopy(hotkeys.DEFAULTS)

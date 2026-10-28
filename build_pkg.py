@@ -183,6 +183,8 @@ patch:
     - schema: wubi06
   menu:
     page_size: 9
+  # 方案菜单不绑任何快捷键（F4 会误触），切换方案请走设置面板
+  switcher/hotkeys: []
 """
 p = os.path.join(OUT, "default.custom.yaml")
 with io.open(p, "w", encoding="utf-8", newline="\n") as f:

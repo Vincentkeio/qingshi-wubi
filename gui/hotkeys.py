@@ -15,9 +15,8 @@ ACTIONS = (
     ('full_shape', '全角 / 半角', ('Shift+space', ''), '状态切换'),
     ('ascii_punct', '中英标点', ('Control+period', ''), '状态切换'),
     ('extended_charset', '增广字集', ('Control+Shift+5', ''), '状态切换'),
-    ('schema', '切换方案菜单', ('F4', 'Control+grave'), '方案与翻页'),
-    ('page_up', '上一页', ('minus', 'comma'), '方案与翻页'),
-    ('page_down', '下一页', ('equal', 'period'), '方案与翻页'),
+    ('page_up', '上一页', ('minus', 'comma'), '翻页'),
+    ('page_down', '下一页', ('equal', 'period'), '翻页'),
 )
 DEFAULTS = {key: list(keys) for key, label, keys, group in ACTIONS}
 LABELS = {key: label for key, label, keys, group in ACTIONS}
@@ -64,7 +63,11 @@ def display(value):
 
 
 def validate(values):
-    if not isinstance(values, dict) or set(values) != set(DEFAULTS):
+    if not isinstance(values, dict):
+        raise ValueError('快捷键配置不完整')
+    # 旧版本遗留项（如已删除的「切换方案菜单」）直接丢弃，避免升级后配置读不出来
+    values = {key: value for key, value in values.items() if key in DEFAULTS}
+    if set(values) != set(DEFAULTS):
         raise ValueError('快捷键配置不完整')
     result, seen = {}, {}
     for action, label, defaults, group in ACTIONS:
@@ -177,12 +180,11 @@ def apply(directory, values, shift_commit=True):
             editing = [{'when':'composing', 'accept':key, 'send':target} for key, target in EDITING]
             existing = {(x.get('accept'), x.get('when')) for x in keep}
             put(patch, 'key_binder/bindings', [x for x in editing if (x['accept'],x['when']) not in existing] + keep)
-            put(patch, 'switcher/hotkeys', [key for item in values['schema'] for key in accepts(item)])
+            # 方案菜单已取消快捷键入口：显式清空，盖掉 default.yaml 里的 F4 / Ctrl+`
+            put(patch, 'switcher/hotkeys', [])
         else:
             bindings = keep[:]
             for action, label, defaults, group in ACTIONS:
-                if action == 'schema':
-                    continue
                 for key in values[action]:
                     for accept in accepts(key):
                         if action in ('page_up','page_down'):

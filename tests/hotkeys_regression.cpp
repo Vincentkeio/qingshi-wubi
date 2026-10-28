@@ -84,12 +84,18 @@ int wmain(int argc, wchar_t** argv) {
     api->simulate_key_sequence(session, "{bracketleft}");
     assert(page(api, session) == 0);
     api->clear_composition(session);
+    // 方案菜单已取消快捷键：F4 不应再弹出方案选单，也不应切换方案
     api->simulate_key_sequence(session, "{F4}");
     assert(count(api, session) == 0);
+    {
+      char current[256] = {0};
+      assert(api->get_current_schema(session, current, sizeof(current)) > 0);
+      assert(std::string(current) == schema);
+    }
     api->simulate_key_sequence(session, "{F9}");
     assert(count(api, session) > 0);
     api->simulate_key_sequence(session, "{Escape}");
-    std::cout << "PASS " << schema << ": custom modes, paging, schema menu, old keys unbound\n";
+    std::cout << "PASS " << schema << ": custom modes, paging, no schema-menu hotkey, old keys unbound\n";
   }
   api->destroy_session(session);
   api->finalize();

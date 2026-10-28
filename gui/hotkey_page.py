@@ -141,7 +141,7 @@ class HotkeyPage(QWidget):
         self.message.setObjectName('hotkeyMessage')
         self.message.hide()
         layout.addWidget(self.message)
-        for group in ('状态切换','方案与翻页'):
+        for group in ('状态切换','翻页'):
             panel = QFrame()
             panel.setObjectName('candidatePanel')
             grid = QGridLayout(panel)
@@ -183,7 +183,7 @@ class HotkeyPage(QWidget):
             grid.setColumnStretch(1, 1)
             grid.setColumnStretch(2, 1)
             layout.addWidget(panel)
-        base = QLabel('数字键选词、空格上屏、Esc 清空与 PgUp / PgDn 保留为基础输入键。\nWin＋空格切换输入法由 Windows 管理。Ctrl＋数字用于候选置顶。')
+        base = QLabel('数字键选词、空格上屏、Esc 清空与 PgUp / PgDn 保留为基础输入键。\nWin＋空格切换输入法由 Windows 管理。Ctrl＋数字用于候选置顶。\n切换方案不占用快捷键（F4 容易误触），请到「方案」页切换。')
         base.setWordWrap(True)
         base.setObjectName('hint')
         layout.addWidget(base)

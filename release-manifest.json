@@ -1,10 +1,10 @@
 {
-  "version": "1.0.15",
+  "version": "1.0.16",
   "platform": "Windows 10/11 x64",
   "installer": {
     "name": "QingshiSetup.exe",
-    "size": 83967468,
-    "sha256": "7b7a3176e632eed692dd921fa3375ef078baf3a23e69cef810750d038fd1c2b3"
+    "size": 84529584,
+    "sha256": "1c5afa20d7b955c1d930f46949e404c92c3994ef0835f3dec289fc107fcab803"
   },
   "upstream_weasel": "82b50c9e9b9ee0bd31357db6f25ddc804546c7f7",
   "librime_binary_revision": "33e7814",
@@ -16,7 +16,7 @@
   "native": {
     "WeaselServer.exe": {
       "size": 2560000,
-      "sha256": "605804c26aa920a77e4bfe4231fa38cbc676a5582d56a30441abef2aaaa42c15"
+      "sha256": "ead0747184908c95e6e8c4f5e9ea677f1db35c035363d1012bb40e75da526bf0"
     },
     "WeaselDeployer.exe": {
       "size": 1300992,
@@ -36,29 +36,28 @@
     }
   },
   "changes": [
-    "快捷键页可直接录入主快捷键与备用键，覆盖中英文、简繁、全半角、中英标点、增广字集、方案菜单及候选翻页",
-    "提供冲突检查、保留键检查、清除与恢复默认；三套方案共用，点击应用后更新配置并重启输入法服务",
-    "自定义快捷键随配置备份导入导出；写入失败回滚，并保留其他方案配置",
-    "修复自定义中英文按键在英文模式下无法切回的问题，并让替换掉的旧按键停止触发",
-    "保留基础选词、空格、Esc、PgUp/PgDn；Windows 系统快捷键单独说明",
-    "保留 1.0.14 的菜单重做、固定菜单字号、设置启动提速与黑框/旧维护通知清理"
+    "移除「切换方案菜单」快捷键：F4 与 Ctrl+` 不再被输入法拦截，避免在游戏、编辑软件里误触",
+    "切换方案统一走设置面板的「方案」页；快捷键页只保留「状态切换」与「翻页」两组",
+    "default.yaml 与 default.custom.yaml 的 switcher 热键同步清空，新装机器同样不带 F4",
+    "旧快捷键配置与旧配置备份中的方案菜单项自动忽略，升级后不会读不出配置",
+    "快捷键页补充说明：切换方案不占用快捷键，请到「方案」页切换"
   ],
   "validation": {
-    "automated_tests": 56,
+    "automated_tests": 58,
     "native_x64_build": "passed",
-    "custom_hotkeys_actual_engine": "all three schemas passed custom toggles, bidirectional ASCII mode, paging, schema menu, removed old bindings and restored defaults",
+    "custom_hotkeys_actual_engine": "all three schemas passed custom toggles, bidirectional ASCII mode, paging, removed old bindings and restored defaults; F4 no longer opens the scheme menu and leaves the schema unchanged",
     "embedded_payload_checksums": "passed",
-    "payload_files": 275,
+    "payload_files": 234,
     "packaged_qt_diagnostic": "passed",
     "packaged_settings_wizard_installer_preview": "passed",
     "single_instance_implementation": "unchanged from 1.0.14; uses per-user lock and local activation channel",
-    "dictionary_cli_redirected_output": "passed",
+    "dictionary_cli_redirected_output": "unchanged from 1.0.15",
     "console_window_check": "startup architecture unchanged from the verified 1.0.14 implementation",
     "new_full_installation": "not run on the current workstation; installation/extraction/removal covered by automated fixtures"
   },
   "settings": {
     "path": "runtime/settings/QingshiSettings.exe",
-    "size": 2202747,
-    "sha256": "a2cb8b0e25427165b2f9eaacae8b6d2c5e21acd23590b203305a5701ca31265b"
+    "size": 2202765,
+    "sha256": "e374655cc4cb5e46267fb687716f064059d82750c09ba6f01c3a07d90c4fb5b5"
   }
 }

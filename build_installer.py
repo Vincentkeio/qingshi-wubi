@@ -73,25 +73,36 @@ def main():
     build_payload()
     sys.path.insert(0, str(WORK / 'build-tools'))
     import PyInstaller.__main__
-    assets = [*GUI.glob('*.svg'), GUI / 'qingshi-mark.png', *GUI.glob('*.ps1'), GUI / 'payload.zip']
-    arguments = [str(GUI / 'qingshi_app.py'), '--noconfirm', '--clean', '--onefile', '--windowed',
-                 '--name', 'QingshiSetup', '--paths', str(GUI),
+    # 安装器界面已改成原生 Win32，不再需要任何 Qt 运行库。
+    assets = [*GUI.glob('*.ps1'), GUI / 'payload.zip', GUI / 'qingshi-mark.png']
+    arguments = [str(GUI / 'installer_native.py'), '--noconfirm', '--clean', '--onefile',
+                 '--windowed', '--name', 'QingshiSetup', '--paths', str(GUI),
                  '--icon', str(ROOT / 'weasel/resource/weasel.ico'),
                  '--distpath', str(ROOT / 'dist'), '--workpath', str(WORK / 'package-build'),
-                 '--specpath', str(WORK / 'package-build'), '--exclude-module', 'tkinter']
+                 '--specpath', str(WORK / 'package-build'),
+                 '--exclude-module', 'tkinter',
+                 '--exclude-module', 'PyQt6',
+                 '--exclude-module', 'PySide6',
+                 '--exclude-module', 'numpy',
+                 '--exclude-module', 'PIL',
+                 '--exclude-module', 'scipy',
+                 '--exclude-module', 'pandas',
+                 '--exclude-module', 'matplotlib',
+                 '--exclude-module', 'wubi_settings',
+                 '--exclude-module', 'installer_ui',
+                 '--exclude-module', 'qingshi_app',
+                 '--exclude-module', 'ui_theme',
+                 '--exclude-module', 'navigation',
+                 '--exclude-module', 'backup_page',
+                 '--exclude-module', 'setup_wizard',
+                 '--exclude-module', 'smoke_test',
+                 '--exclude-module', 'hotkey_page',
+                 '--exclude-module', 'native.app',
+                 '--exclude-module', 'native.pages',
+                 '--exclude-module', 'native.wizard',
+                 '--exclude-module', 'native.shot']
     for asset in assets:
         arguments += ['--add-data', str(asset) + os.pathsep + '.']
-    # Qt 6.11 ships newer MSVC runtimes than this Python distribution. Put the
-    # matching redistributables at the bundle root as well to avoid loading an
-    # older same-named Python runtime before QtWidgets is imported.
-    import PyQt6
-    qt_bin = Path(PyQt6.__file__).parent / 'Qt6/bin'
-    for pattern in ('vcruntime140*.dll', 'msvcp140*.dll', 'concrt140.dll'):
-        for binary in qt_bin.glob(pattern):
-            arguments += ['--add-binary', str(binary) + os.pathsep + '.']
-    # The desktop runtime adds Poppler's ICU 78 to PATH. QtCore imports the
-    # Windows ICU API by its unversioned name, while Poppler exports suffixed
-    # ICU 78 symbols. Let Qt resolve the compatible Windows ICU in System32.
     original_path = os.environ.get('PATH', '')
     os.environ['PATH'] = os.pathsep.join(
         entry for entry in original_path.split(os.pathsep)

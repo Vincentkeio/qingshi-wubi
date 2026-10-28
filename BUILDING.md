@@ -2,7 +2,7 @@
 
 ## 发布版本
 
-v1.0.15 面向 Windows 10/11 x64。Release 的 `QingshiSetup.exe` 是独立单文件安装包，内含设置中心及输入法运行时。安装与卸载共用同一程序入口。日常设置使用运行时目录中独立的 `settings/QingshiSettings.exe`，避免每次解压安装包。
+v1.0.17 面向 Windows 10/11 x64。Release 的 `QingshiSetup.exe` 是独立单文件安装包，内含设置中心及输入法运行时。安装与卸载共用同一程序入口。日常设置使用运行时目录中独立的 `settings/QingshiSettings.exe`，避免每次解压安装包。
 
 ## 获取源码
 
@@ -28,7 +28,7 @@ cd qingshi-wubi
 
 ## 打包安装器
 
-使用 Windows x64 **Python 3.11**（须与 PyQt6 的 sip 扩展 ABI 匹配），安装 [requirements-build.txt](requirements-build.txt) 后运行：
+使用 Windows x64 **Python 3.11**（当前打包脚本要求 3.11），安装 [requirements-build.txt](requirements-build.txt) 后运行：
 
 ```text
 python -m pip install -r requirements-build.txt
@@ -48,10 +48,6 @@ python -m unittest discover -s tests -p test_installer.py
 python -m unittest discover -s tests -p test_game_compat.py
 ```
 
-打包后的 Qt 依赖诊断：
-
-```text
-QingshiSetup.exe --diagnose-qt qt-diagnostic.json
-```
+设置中心和安装器使用 `gui/native/` 下的 Win32 实现，不依赖 Qt；图标由 Windows GDI+ 加载。安装包入口是 `gui/installer_native.py`，日常设置入口是 `gui/settings_native.py`。
 
 实际安装、输入兼容性和卸载需在目标 Windows 环境中复核。版本发布不意味着所有第三方应用均已覆盖。

@@ -301,6 +301,8 @@ class InstallerTests(unittest.TestCase):
         self.assertTrue(settings.is_file())
         shortcut = self.installer.menu_directories()[0] / '青石五笔设置.lnk'
         self.assertIn(str(settings), shortcut.read_text())
+        wizard = self.installer.menu_directories()[0] / '配置向导.lnk'
+        self.assertIn(str(settings) + ' --wizard', wizard.read_text())
         self.assertTrue(self.installer.uninstall()['ok'])
         self.assertFalse(settings.exists())
 

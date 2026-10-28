@@ -1,10 +1,10 @@
 {
-  "version": "1.0.16",
+  "version": "1.0.17",
   "platform": "Windows 10/11 x64",
   "installer": {
     "name": "QingshiSetup.exe",
-    "size": 84529584,
-    "sha256": "1c5afa20d7b955c1d930f46949e404c92c3994ef0835f3dec289fc107fcab803"
+    "size": 26040375,
+    "sha256": "4a0fe86aa1c3e40db96dd0050f19a6ad286e9acec360f717f86492482272069c"
   },
   "upstream_weasel": "82b50c9e9b9ee0bd31357db6f25ddc804546c7f7",
   "librime_binary_revision": "33e7814",
@@ -36,28 +36,24 @@
     }
   },
   "changes": [
-    "移除「切换方案菜单」快捷键：F4 与 Ctrl+` 不再被输入法拦截，避免在游戏、编辑软件里误触",
-    "切换方案统一走设置面板的「方案」页；快捷键页只保留「状态切换」与「翻页」两组",
-    "default.yaml 与 default.custom.yaml 的 switcher 热键同步清空，新装机器同样不带 F4",
-    "旧快捷键配置与旧配置备份中的方案菜单项自动忽略，升级后不会读不出配置",
-    "快捷键页补充说明：切换方案不占用快捷键，请到「方案」页切换"
+    "设置中心、首次配置向导、安装和卸载界面改为 Windows 原生实现，安装包不再包含 Qt 运行库",
+    "按原版黑白灰界面对齐品牌图标、导航、方案卡片、表单与按钮，并重新整理关于页文案",
+    "修复安装窗口关闭后进程不退出、配置向导入口和后台更新入口的原生迁移问题",
+    "保留三套五笔方案、自定义词条和词序、配置备份、自定义快捷键与更新检查",
+    "保留 1.0.16 的方案菜单热键清理，F4 不再被方案菜单占用"
   ],
   "validation": {
-    "automated_tests": 58,
-    "native_x64_build": "passed",
-    "custom_hotkeys_actual_engine": "all three schemas passed custom toggles, bidirectional ASCII mode, paging, removed old bindings and restored defaults; F4 no longer opens the scheme menu and leaves the schema unchanged",
+    "automated_tests": 61,
     "embedded_payload_checksums": "passed",
-    "payload_files": 234,
-    "packaged_qt_diagnostic": "passed",
-    "packaged_settings_wizard_installer_preview": "passed",
-    "single_instance_implementation": "unchanged from 1.0.14; uses per-user lock and local activation channel",
-    "dictionary_cli_redirected_output": "unchanged from 1.0.15",
-    "console_window_check": "startup architecture unchanged from the verified 1.0.14 implementation",
-    "new_full_installation": "not run on the current workstation; installation/extraction/removal covered by automated fixtures"
+    "payload_files": 128,
+    "qt_runtime_absent": "verified in both executable archives and payload",
+    "native_ui_preview": "8 settings pages at 100% and 150%; minimum window; installer/uninstaller preview states",
+    "local_installation": "native 1.0.16 build installed successfully with settings preserved; 1.0.17 entry routing covered by regression tests",
+    "native_engine_binaries": "unchanged from local 1.0.16; hashes recorded above"
   },
   "settings": {
     "path": "runtime/settings/QingshiSettings.exe",
-    "size": 2202765,
-    "sha256": "e374655cc4cb5e46267fb687716f064059d82750c09ba6f01c3a07d90c4fb5b5"
+    "size": 2233923,
+    "sha256": "c6675a18648144c0fd65b365a84bfccfbad63262bf1852ac2411d0704daa6452"
   }
 }

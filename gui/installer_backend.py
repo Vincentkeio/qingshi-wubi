@@ -19,7 +19,7 @@ import winreg
 import zipfile
 
 APP_ID = 'QingshiWubi'
-VERSION = '1.0.16'
+VERSION = '1.0.17'
 APP_KEY = r'Software\QingshiWubi'
 RIME_KEY = r'Software\Rime\Weasel'
 UNINSTALL_KEY = r'Software\Microsoft\Windows\CurrentVersion\Uninstall\QingshiWubi'
@@ -674,7 +674,7 @@ class Installer:
         for name, arguments in [('青石五笔设置', ''), ('配置向导', '--wizard'), ('卸载青石五笔', '--uninstall')]:
             target = executable
             runtime = self.managed().get('runtime')
-            if name == '青石五笔设置' and runtime:
+            if name in ('青石五笔设置', '配置向导') and runtime:
                 settings = Path(runtime) / 'settings/QingshiSettings.exe'
                 if settings.is_file():
                     target = settings

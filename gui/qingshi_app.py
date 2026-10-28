@@ -22,6 +22,22 @@ def detached_uninstaller(action='--uninstall'):
                      creationflags=subprocess.CREATE_NO_WINDOW, close_fds=True)
 
 
+def is_setup_invocation(argv, executable, frozen):
+    """这个进程该当安装器，还是当设置中心？
+
+    以前靠「文件名精确等于 qingshisetup」判断，结果浏览器重复下载把文件存成
+    `QingshiSetup (1).exe` 时，安装包会误判成设置中心 —— 双击直接弹出设置界面，
+    永远装不上，还会一直提示「有更新」。所以反过来判：只有明确叫 qingshi 的
+    才是设置中心，其余打包版一律当安装器。
+    """
+    stem = Path(executable).stem.lower()
+    if '--setup' in argv:
+        return True
+    if 'qingshisetup' in stem:      # 兼容 "QingshiSetup (1)" / "qingshisetup(2)"
+        return True
+    return bool(frozen) and stem != 'qingshi'
+
+
 def main():
     if '--diagnose-qt' in sys.argv:
         result = {'ok': False}
@@ -72,7 +88,7 @@ def main():
     from ui_theme import apply_theme
     app = QApplication(sys.argv)
     apply_theme(app)
-    setup = ('--setup' in sys.argv or Path(sys.executable).stem.lower() == 'qingshisetup')
+    setup = is_setup_invocation(sys.argv, sys.executable, frozen)
     if setup or uninstall:
         from installer_ui import InstallerWindow
         window = InstallerWindow(uninstall, preview)

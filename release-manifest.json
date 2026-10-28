@@ -1,10 +1,10 @@
 {
-  "version": "1.0.12",
+  "version": "1.0.13",
   "platform": "Windows 10/11 x64",
   "installer": {
     "name": "QingshiSetup.exe",
-    "size": 44658794,
-    "sha256": "6481e14d6860fecc47cafcdcdaa49e851d12236023f99a59a87eab945a36c1a1"
+    "size": 45037070,
+    "sha256": "24a4003b69e4f2e8ee7a12c271fb476a98695739e7296b6113404dc792f20ef6"
   },
   "upstream_weasel": "82b50c9e9b9ee0bd31357db6f25ddc804546c7f7",
   "librime_binary_revision": "33e7814",
@@ -16,7 +16,7 @@
   "native": {
     "WeaselServer.exe": {
       "size": 2548736,
-      "sha256": "8b838a5eb5bf353654659103065e896eb5ef630e4a27a01b460e1adc33ca4721"
+      "sha256": "49b8cbd70fef4290c9519cab9db2065bb3f6103103dee62f45f28f266829bbf9"
     },
     "WeaselDeployer.exe": {
       "size": 1297408,
@@ -36,6 +36,7 @@
     }
   },
   "changes": [
+    "修复安装包被误判成设置中心：浏览器重复下载存成「QingshiSetup (1).exe」时，双击会直接弹出设置界面、装不上新版本，还一直提示有更新。现在只要文件名里含 qingshisetup（含空格/括号副本），或者打包版叫其它名字，一律按安装器处理",
     "检查到新版本时提供两个下载入口：从官网下载、从 GitHub 下载（安装包与发布页任选）",
     "检查新版本只查青石自己的 GitHub 正式发布，规则与设置中心「备份与更新」一致",
     "彻底移除小狼毫的 WinSparkle 更新模块：不再读取 rime.im 的更新源，也不会下载或执行任何安装包",
@@ -45,6 +46,7 @@
   "validation": {
     "installer_and_compatibility_tests": 21,
     "config_and_save_flow_tests": 20,
+    "launch_mode_tests": 6,
     "payload_files": 67,
     "native_imm_tests": "passed",
     "engine_regression": "passed",
@@ -56,6 +58,7 @@
     "lol_training_mode": "candidates and Chinese commit confirmed",
     "update_check_source": "GitHub releases/latest only; WinSparkle and rime.im feed removed",
     "update_check_dialog": "manual check returns 当前已是最新正式版本 for the current build",
-    "update_check_choices": "two download entries: official website and GitHub release page"
+    "update_check_choices": "two download entries: official website and GitHub release page",
+    "installer_name_detection": "QingshiSetup (1).exe / QingshiSetup(2).exe / renamed copies all launch as installer"
   }
 }

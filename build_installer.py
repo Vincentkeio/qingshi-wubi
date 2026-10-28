@@ -11,6 +11,14 @@ WORK = ROOT.parent / 'work'
 GUI = ROOT / 'gui'
 OUTPUT = ROOT / 'weasel/output'
 
+# package-deps 里的 PyQt6 是为 Python 3.11 编译的（sip.cp311-win_amd64.pyd）。
+# 用 3.12/3.13 打包不会报错，但装出来的 exe 一启动就
+# "ModuleNotFoundError: No module named 'PyQt6.sip'" —— 1.0.13 就是这么翻车的。
+if sys.version_info[:2] != (3, 11):
+    sys.exit(
+        f'请用 Python 3.11 打包（当前 {sys.version_info.major}.{sys.version_info.minor}）：'
+        'package-deps 里的 PyQt6 是 cp311 构建，版本不匹配会导致安装包启动即崩溃。')
+
 
 def build_payload():
     entries = {}

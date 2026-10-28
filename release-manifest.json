@@ -3,8 +3,8 @@
   "platform": "Windows 10/11 x64",
   "installer": {
     "name": "QingshiSetup.exe",
-    "size": 45037070,
-    "sha256": "24a4003b69e4f2e8ee7a12c271fb476a98695739e7296b6113404dc792f20ef6"
+    "size": 44659578,
+    "sha256": "7d01fb149163473db74a20d5e2fb55e4a6aa9d29d28e98b8f6326951fbcb22a2"
   },
   "upstream_weasel": "82b50c9e9b9ee0bd31357db6f25ddc804546c7f7",
   "librime_binary_revision": "33e7814",

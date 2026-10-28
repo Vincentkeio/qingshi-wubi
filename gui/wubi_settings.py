@@ -28,7 +28,7 @@ except ImportError:
     yaml = None
 
 APP_NAME = "青石五笔输入法"
-APP_VER = "1.0.13"
+APP_VER = "1.0.14"
 from app_paths import user_directory, runtime_directories
 RIME_DIR = user_directory()
 WEASEL_CANDIDATES = runtime_directories()
@@ -595,7 +595,7 @@ class RimeConfig:
         for d in WEASEL_CANDIDATES:
             exe = os.path.join(d, "WeaselDeployer.exe")
             if os.path.isfile(exe):
-                proc = subprocess.Popen([exe, "/reload"])
+                proc = subprocess.Popen([exe, "/reload"], creationflags=subprocess.CREATE_NO_WINDOW)
                 if wait:
                     try:
                         proc.wait(timeout=10)
@@ -609,7 +609,7 @@ class RimeConfig:
         for d in WEASEL_CANDIDATES:
             exe = os.path.join(d, "WeaselDeployer.exe")
             if os.path.isfile(exe):
-                proc = subprocess.Popen([exe, "/deploy"])
+                proc = subprocess.Popen([exe, "/deploy"], creationflags=subprocess.CREATE_NO_WINDOW)
                 if wait:
                     try:
                         proc.wait(timeout=25)
@@ -1100,10 +1100,6 @@ class MainWindow(QMainWindow):
         self.chk_shift_direct.setAccessibleName("Shift 加字母直接输出")
         habit_layout.addWidget(self.chk_shift_direct)
 
-        habit_tip = QLabel("「按 Shift 上屏编码」会把已输入的编码上屏；Rime 内核在上屏时会顺带切换中英文，两者不可分。")
-        habit_tip.setObjectName("hint")
-        habit_tip.setWordWrap(True)
-        habit_layout.addWidget(habit_tip)
         habit_layout.addStretch(1)
 
         candidate_panel = QFrame()
@@ -1781,6 +1777,15 @@ class MainWindow(QMainWindow):
     def switch_page(self, i):
         self.stack.setCurrentIndex(i)
         self.nav_scroll.ensureWidgetVisible(self.nav_list.buttons[i], 0, 8)
+        if i == 2 and getattr(self, '_dictionary_stats_dirty', True):
+            self.refresh_dictionary_stats()
+
+    def refresh_dictionary_stats(self):
+        stats = self.cfg.stats()
+        for sid, label in self.dict_stat_labels.items():
+            count = stats.get(sid)
+            label.setText(f"{count:,}" if count else "未安装")
+        self._dictionary_stats_dirty = False
 
     def pick_schema(self, sid):
         self.cur_schema = sid
@@ -1817,11 +1822,11 @@ class MainWindow(QMainWindow):
         self.spin_font.setValue(st["font_point"])
         self.spin_round.setValue(st["round_corner"])
 
-        # 词库统计
-        st2 = self.cfg.stats()
-        for sid, name, _ in SCHEMAS:
-            n = st2.get(sid)
-            self.dict_stat_labels[sid].setText(f"{n:,}" if n else "未安装")
+        # Counting every dictionary is unnecessary before the settings window
+        # is visible. Refresh on entering the dictionary page, including imports.
+        self._dictionary_stats_dirty = True
+        if self.stack.currentIndex() == 2:
+            self.refresh_dictionary_stats()
         self.load_phrases()
 
         # 自定义词序：默认跟着当前方案走
@@ -1969,7 +1974,7 @@ class MainWindow(QMainWindow):
         QMessageBox.information(
             self, "重新部署",
             "已重新部署并重启输入法服务" if restarted
-            else ("已触发部署" if ok else "未找到 WeaselDeployer"))
+            else ("已触发部署" if ok else "未找到输入法配置工具"))
 
 
 def main():

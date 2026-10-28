@@ -63,6 +63,7 @@ class WeaselTrayIcon : public CSystemTray {
   WeaselTrayIcon(weasel::UI& ui);
 
   BOOL Create(HWND hTargetWnd);
+  void ShowMenu();
 
   // Captures the tray-relevant state and posts a refresh request to the server
   // message thread. Never calls Shell_NotifyIcon itself.
@@ -75,6 +76,9 @@ class WeaselTrayIcon : public CSystemTray {
  protected:
   virtual void CustomizeMenu(HMENU hMenu);
 
+  // 自绘托盘菜单：配色跟候选窗一致。菜单文字直接从资源里读，三种语言自动跟随。
+  virtual bool OnCustomMenu(HWND target, POINT pos, HMENU menu);
+
   void Refresh(const WeaselTrayIconState& state);
 
   weasel::UIStyle& m_style;
@@ -82,7 +86,6 @@ class WeaselTrayIcon : public CSystemTray {
   WeaselTrayMode m_mode;
   std::wstring m_schema_zhung_icon;
   std::wstring m_schema_ascii_icon;
-  bool m_disabled;
 
   // Guarded by m_state_mutex.
   bool m_refresh_enabled = true;

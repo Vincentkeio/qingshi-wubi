@@ -13,6 +13,7 @@
 #include <resource.h>
 #include <rime_api.h>
 #include <shellapi.h>
+#include <QingshiSettings.h>
 
 #include <string>
 #include <vector>
@@ -1360,28 +1361,9 @@ bool WeaselPanel::_RemovePhrase(const wstring& word) {
 }
 
 void WeaselPanel::_OpenSettings() {
-  wchar_t module[MAX_PATH]{};
-  ::GetModuleFileNameW(nullptr, module, MAX_PATH);
-  auto settings = fs::path(module).parent_path().parent_path() / L"Qingshi.exe";
-  if (fs::exists(settings)) {
-    ::ShellExecuteW(nullptr, L"open", settings.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-    return;
-  }
-  const wchar_t* targets[] = {
-      L"D:\\空间\\青石五笔输入法\\启动设置.bat",
-      L"D:\\空间\\青石五笔输入法\\rime-dev\\gui\\启动设置.bat",
-  };
-  for (const wchar_t* t : targets) {
-    if (fs::exists(fs::path(t))) {
-      ::ShellExecuteW(nullptr, L"open", t, nullptr, nullptr, SW_SHOWNORMAL);
-      return;
-    }
-  }
-  wchar_t exe[MAX_PATH]{};
-  ::GetModuleFileNameW(nullptr, exe, MAX_PATH);
-  fs::path install = fs::path(exe).parent_path();
-  ::ShellExecuteW(nullptr, L"open", install.c_str(), nullptr, nullptr,
-                  SW_SHOWNORMAL);
+  if (!qingshi::OpenSettings())
+    ::MessageBoxW(nullptr, L"未找到设置中心，请重新安装青石五笔。", L"青石五笔",
+                  MB_OK | MB_ICONERROR);
 }
 
 void WeaselPanel::_Redeploy() {

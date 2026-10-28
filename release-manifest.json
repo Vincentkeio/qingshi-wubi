@@ -1,10 +1,10 @@
 {
-  "version": "1.0.13",
+  "version": "1.0.14",
   "platform": "Windows 10/11 x64",
   "installer": {
     "name": "QingshiSetup.exe",
-    "size": 44659578,
-    "sha256": "7d01fb149163473db74a20d5e2fb55e4a6aa9d29d28e98b8f6326951fbcb22a2"
+    "size": 83925066,
+    "sha256": "c2a394af54ca75d4e446ebdf5cc9fd9dc04dcdd38b93cbf9616932ee8c0e595f"
   },
   "upstream_weasel": "82b50c9e9b9ee0bd31357db6f25ddc804546c7f7",
   "librime_binary_revision": "33e7814",
@@ -15,16 +15,16 @@
   "engine": "Weasel / Rime",
   "native": {
     "WeaselServer.exe": {
-      "size": 2548736,
-      "sha256": "49b8cbd70fef4290c9519cab9db2065bb3f6103103dee62f45f28f266829bbf9"
+      "size": 2560000,
+      "sha256": "e126debb9e86a8c82b3028b280b5a32516a8a9b44907786b0d91265b936a206a"
     },
     "WeaselDeployer.exe": {
-      "size": 1297408,
-      "sha256": "3abcf7cdc8c5309540e04fa4c85a5eec9c847f79b67232731b10bcca9f0a8429"
+      "size": 1300992,
+      "sha256": "2ce13a12e1d687fb203eb2119db9d4c8356219a4288e747c97b9399f5fd9610d"
     },
     "weaselx64.dll": {
-      "size": 1215488,
-      "sha256": "e92324dbcddf7597f7d1e82bbff323989c6e79d7d0f61352347b7bec6d44bfb2"
+      "size": 1233920,
+      "sha256": "486f4d59e5020a213bbdd4220df2168d7801a2ff999c979d904a138cde7225be"
     },
     "qingshi_game.ime": {
       "size": 678400,
@@ -36,29 +36,30 @@
     }
   },
   "changes": [
-    "修复安装包被误判成设置中心：浏览器重复下载存成「QingshiSetup (1).exe」时，双击会直接弹出设置界面、装不上新版本，还一直提示有更新。现在只要文件名里含 qingshisetup（含空格/括号副本），或者打包版叫其它名字，一律按安装器处理",
-    "检查到新版本时提供两个下载入口：从官网下载、从 GitHub 下载（安装包与发布页任选）",
-    "检查新版本只查青石自己的 GitHub 正式发布，规则与设置中心「备份与更新」一致",
-    "彻底移除小狼毫的 WinSparkle 更新模块：不再读取 rime.im 的更新源，也不会下载或执行任何安装包",
-    "安装包去掉已经用不到的 WinSparkle.dll，体积减少约 1 MB",
-    "托盘与语言栏的「帮助文档 / 参加讨论」改为青石自己的使用说明与 GitHub Issues"
+    "重做托盘与语言栏右键菜单：统一由服务绘制，固定 10pt 字号，配色跟随主题；完善图标、悬停、按下和键盘操作",
+    "修复无编辑框焦点时右键不弹菜单，以及旧组件与服务菜单样式不一致的问题",
+    "日常设置中心独立打包，免去每次启动解压安装数据；已打开时复用窗口，词库统计改为按需读取",
+    "修复设置入口错误回退到批处理脚本导致的命令行黑框；配置工具启动不再创建控制台",
+    "移除部署期间的维护通知，统一运行组件产品名称；保留第三方开源许可与署名",
+    "删除 Shift 选项下方的冗余说明文字，保留两个开关"
   ],
   "validation": {
-    "installer_and_compatibility_tests": 21,
-    "config_and_save_flow_tests": 20,
-    "launch_mode_tests": 6,
-    "payload_files": 67,
-    "native_imm_tests": "passed",
-    "engine_regression": "passed",
-    "fixed_order_repeat_selection": "3 schemas x 40 picks, order unchanged",
-    "appearance_hot_reload": "style synced on next keystroke without service restart",
-    "unique_code_auto_commit": "4-key unique only, default off",
-    "packaged_qt": "passed",
-    "packaged_preview": "passed",
-    "lol_training_mode": "candidates and Chinese commit confirmed",
-    "update_check_source": "GitHub releases/latest only; WinSparkle and rime.im feed removed",
-    "update_check_dialog": "manual check returns 当前已是最新正式版本 for the current build",
-    "update_check_choices": "two download entries: official website and GitHub release page",
-    "installer_name_detection": "QingshiSetup (1).exe / QingshiSetup(2).exe / renamed copies all launch as installer"
+    "automated_tests": 48,
+    "native_x64_build": "passed",
+    "embedded_payload_checksums": "passed",
+    "payload_files": 275,
+    "packaged_qt_diagnostic": "passed",
+    "packaged_settings_wizard_installer_preview": "passed",
+    "installed_settings_startup_before_ms": 1489,
+    "installed_settings_startup_after_ms": 906,
+    "single_instance_check": "passed with per-user lock and local activation channel",
+    "dictionary_cli_redirected_output": "passed",
+    "console_window_show_events_after_settings_launch": 0,
+    "new_full_installation": "not run on the current workstation; installation/extraction/removal covered by automated fixtures"
+  },
+  "settings": {
+    "path": "runtime/settings/QingshiSettings.exe",
+    "size": 2181910,
+    "sha256": "925245191942fc78b5f4046fcc34ca2f9e83ae23989f64d0cf908ba843744a7b"
   }
 }

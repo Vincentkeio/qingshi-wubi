@@ -1,7 +1,9 @@
 #include "stdafx.h"
 #include <resource.h>
 #include <thread>
+#include <vector>
 #include <shellapi.h>
+#include <TrayMenu.h>
 #include "WeaselTSF.h"
 #include "LanguageBar.h"
 #include "CandidateList.h"
@@ -159,9 +161,21 @@ STDMETHODIMP CLangBarItemButton::OnClick(TfLBIClick click,
       _pLangBarItemSink->OnUpdate(TF_LBI_STATUS | TF_LBI_ICON);
     }
   } else if (click == TF_LBI_CLK_RIGHT) {
-    /* Open menu */
+    // Return to the shell before opening the popup. Both tray entry points now
+    // use the server's current menu, avoiding stale UI in long-lived clients.
+    HWND server = FindWindowW(WEASEL_IPC_WINDOW, WEASEL_IPC_WINDOW);
+    if (server) {
+      DWORD pid = 0;
+      GetWindowThreadProcessId(server, &pid);
+      AllowSetForegroundWindow(pid);
+      if (PostMessageW(server, WM_COMMAND, TrayMenu::kShowServerMenu, 0))
+        return S_OK;
+    }
+    /* 自绘菜单：配色跟候选窗一致，不再走系统 TrackPopupMenu */
+    // The taskbar can be clicked with no editable context (desktop, settings,
+    // or after focus-out). Showing a menu must not depend on a document HWND.
     HWND hwnd = _pTextService->_GetFocusedContextWindow();
-    if (hwnd != NULL) {
+    {
       LANGID langid = get_language_id();
       HMENU menu;
       if (langid == TEXTSERVICE_LANGID_HANS) {
@@ -171,12 +185,28 @@ STDMETHODIMP CLangBarItemButton::OnClick(TfLBIClick click,
       } else {
         menu = LoadMenuW(g_hInst, MAKEINTRESOURCE(IDR_MENU_POPUP));
       }
+      if (!menu)
+        return S_OK;
       HMENU popupMenu = GetSubMenu(menu, 0);
-      UINT wID = TrackPopupMenuEx(
-          popupMenu, TPM_NONOTIFY | TPM_RETURNCMD | TPM_HORPOSANIMATION, pt.x,
-          pt.y, hwnd, NULL);
+      std::vector<TrayMenu::Item> items;
+      if (popupMenu) {
+        const int count = GetMenuItemCount(popupMenu);
+        for (int i = 0; i < count; ++i) {
+          const UINT id = GetMenuItemID(popupMenu, i);
+          wchar_t text[256] = {0};
+          GetMenuStringW(popupMenu, i, text, _countof(text), MF_BYPOSITION);
+          TrayMenu::Item item;
+          item.id = (id == static_cast<UINT>(-1)) ? 0u : id;  // -1 表示分隔线
+          item.text = TrayMenu::CleanLabel(text);
+          item.enabled = (GetMenuState(popupMenu, i, MF_BYPOSITION) &
+                          (MF_DISABLED | MF_GRAYED)) == 0;
+          items.push_back(item);
+        }
+      }
+      const UINT wID = TrayMenu::Popup(hwnd, pt, items, _style);
       DestroyMenu(menu);
-      _pTextService->_HandleLangBarMenuSelect(wID);
+      if (wID)
+        _pTextService->_HandleLangBarMenuSelect(wID);
     }
   }
   return S_OK;

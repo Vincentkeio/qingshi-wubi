@@ -1,23 +1,67 @@
 ﻿#include "stdafx.h"
 #include "WeaselTrayIcon.h"
-#include <atlstr.h>
+#include <TrayMenu.h>
+#include <algorithm>
 
 // nasty
 #include <resource.h>
 
 static UINT mode_icon[] = {IDI_ZH, IDI_ZH, IDI_EN, IDI_RELOAD};
-static const WCHAR* mode_label[] = {NULL, /*L"中文"*/ NULL, /*L"西文"*/ NULL,
-                                    L"Under maintenance"};
 
 WeaselTrayIcon::WeaselTrayIcon(weasel::UI& ui)
     : m_style(ui.style()),
       m_status(ui.status()),
       m_mode(INITIAL),
       m_schema_zhung_icon(),
-      m_schema_ascii_icon(),
-      m_disabled(false) {}
+      m_schema_ascii_icon() {}
 
 void WeaselTrayIcon::CustomizeMenu(HMENU hMenu) {}
+
+void WeaselTrayIcon::ShowMenu() {
+  HMENU menu = LoadMenuW(GetModuleHandleW(nullptr), MAKEINTRESOURCE(IDR_MENU_POPUP));
+  if (!menu) return;
+  POINT pos{};
+  GetCursorPos(&pos);
+  OnCustomMenu(GetTargetWnd(), pos, GetSubMenu(menu, 0));
+  DestroyMenu(menu);
+}
+
+bool WeaselTrayIcon::OnCustomMenu(HWND target, POINT pos, HMENU menu) {
+  if (!menu)
+    return false;
+  // A nested message loop still receives tray notifications. Do not open a
+  // second popup over the first one when right-clicked repeatedly.
+  static bool menu_open = false;
+  if (menu_open) return true;
+  struct MenuGuard {
+    bool& open;
+    explicit MenuGuard(bool& value) : open(value) { open = true; }
+    ~MenuGuard() { open = false; }
+  } guard(menu_open);
+  const int count = ::GetMenuItemCount(menu);
+  if (count <= 0)
+    return false;
+
+  // 文字和 ID 都从资源里读，简中 / 繁中 / 英文自动跟着 rc 走。
+  std::vector<TrayMenu::Item> items;
+  items.reserve(count);
+  for (int i = 0; i < count; ++i) {
+    const UINT id = ::GetMenuItemID(menu, i);
+    wchar_t text[256] = {0};
+    ::GetMenuStringW(menu, i, text, _countof(text), MF_BYPOSITION);
+    TrayMenu::Item item;
+    item.id = (id == static_cast<UINT>(-1)) ? 0u : id;  // -1 表示分隔线
+    item.text = TrayMenu::CleanLabel(text);
+    item.enabled = (::GetMenuState(menu, i, MF_BYPOSITION) &
+                    (MF_DISABLED | MF_GRAYED)) == 0;
+    items.push_back(item);
+  }
+
+  const UINT picked = TrayMenu::Popup(target, pos, items, m_style);
+  if (picked)
+    ::PostMessageW(target, WM_COMMAND, picked, 0);
+  return true;
+}
 
 BOOL WeaselTrayIcon::Create(HWND hTargetWnd) {
   HMODULE hModule = GetModuleHandle(NULL);
@@ -80,13 +124,12 @@ void WeaselTrayIcon::DisableRefresh() {
 
 void WeaselTrayIcon::Refresh(const WeaselTrayIconState& state) {
   if (!state.display_tray_icon &&
-      !state.disabled)  // display notification when deploying
+      !state.disabled)
   {
     if (m_mode != INITIAL) {
       RemoveIcon();
       m_mode = INITIAL;
     }
-    m_disabled = false;
     return;
   }
   WeaselTrayMode mode = state.disabled     ? DISABLED
@@ -120,14 +163,8 @@ void WeaselTrayIcon::Refresh(const WeaselTrayIconState& state) {
     } else
       SetIcon(mode_icon[mode]);
 
-    if (mode_label[mode] && m_disabled == false) {
-      CString info;
-      info.LoadStringW(IDS_STR_UNDER_MAINTENANCE);
-      ShowBalloon(info, get_weasel_ime_name().c_str());
-      m_disabled = true;
-    }
-    if (m_mode != DISABLED)
-      m_disabled = false;
+    // Deploying is a transient engine state. The settings UI already reports
+    // progress; do not interrupt the user with a maintenance balloon.
   } else if (!Visible()) {
     ShowIcon();
   }

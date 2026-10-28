@@ -19,7 +19,7 @@ import winreg
 import zipfile
 
 APP_ID = 'QingshiWubi'
-VERSION = '1.0.13'
+VERSION = '1.0.14'
 APP_KEY = r'Software\QingshiWubi'
 RIME_KEY = r'Software\Rime\Weasel'
 UNINSTALL_KEY = r'Software\Microsoft\Windows\CurrentVersion\Uninstall\QingshiWubi'
@@ -280,7 +280,7 @@ class Windows:
             entry.size = ctypes.sizeof(entry)
             present = kernel.Process32FirstW(snapshot, ctypes.byref(entry))
             while present:
-                if entry.pid != os.getpid() and entry.name.lower() in {'weaselserver.exe', 'weaseldeployer.exe', 'qingshi.exe'}:
+                if entry.pid != os.getpid() and entry.name.lower() in {'weaselserver.exe', 'weaseldeployer.exe', 'qingshi.exe', 'qingshisettings.exe'}:
                     handle = kernel.OpenProcess(0x00101000, False, entry.pid)
                     if handle:
                         try:
@@ -672,7 +672,13 @@ class Installer:
         no_reparse(menu)
         menu.mkdir(parents=True, exist_ok=True)
         for name, arguments in [('青石五笔设置', ''), ('配置向导', '--wizard'), ('卸载青石五笔', '--uninstall')]:
-            self.system.shortcut(menu / (name + '.lnk'), executable, arguments)
+            target = executable
+            runtime = self.managed().get('runtime')
+            if name == '青石五笔设置' and runtime:
+                settings = Path(runtime) / 'settings/QingshiSettings.exe'
+                if settings.is_file():
+                    target = settings
+            self.system.shortcut(menu / (name + '.lnk'), target, arguments)
 
     def cleanup_legacy_data(self):
         data = self.profile / 'AppData/Roaming/Rime'

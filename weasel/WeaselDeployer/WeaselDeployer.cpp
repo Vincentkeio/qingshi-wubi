@@ -28,7 +28,7 @@ static int ShowHelp() {
         L"/dict restore <file> - Restore a user dictionary snapshot\n"
         L"/dict export <dict> <file> - Export a user dictionary\n"
         L"/dict import <dict> <file> - Import a user dictionary");
-    MessageBox(NULL, help.c_str(), L"Weasel Deployer",
+    MessageBox(NULL, help.c_str(), L"青石五笔配置工具",
                MB_ICONINFORMATION | MB_OK);
   } else {
     MessageBox(NULL,
@@ -43,8 +43,8 @@ static int ShowHelp() {
                L"/dict export <dict> <file>\t- Export a user dictionary\n"
                L"/dict import <dict> <file>\t- Import a user dictionary\n"
                L"/sync\t\t- Sync user data\n"
-               L"/install\t\t- Install Weasel (Initial deployment)",
-               L"Weasel Deployer", MB_ICONINFORMATION | MB_OK);
+               L"/install\t\t- Install Qingshi Wubi (Initial deployment)",
+               L"青石五笔配置工具", MB_ICONINFORMATION | MB_OK);
   }
   return 0;
 }
@@ -53,24 +53,23 @@ static bool IsDictionaryCli(int argc, wchar_t* argv[]) {
   return argc > 2 && IsOption(argv[1], L"/dict");
 }
 
-static void DetachGuiConsole() {
-  HWND console = GetConsoleWindow();
-  if (console) {
-    DWORD processes[64] = {0};
-    const DWORD count = GetConsoleProcessList(processes, _countof(processes));
-    if (count == 1 && processes[0] == GetCurrentProcessId()) {
-      ShowWindow(console, SW_HIDE);
-    }
-  }
-  FreeConsole();
+static void AttachDictionaryConsole() {
+  // GUI launches have no console at all. Explicit dictionary CLI commands may
+  // reuse the caller's terminal; preserve redirected output handles for scripts.
+  const HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
+  const HANDLE err = GetStdHandle(STD_ERROR_HANDLE);
+  if (GetConsoleWindow() || !AttachConsole(ATTACH_PARENT_PROCESS))
+    return;
+  FILE* stream = nullptr;
+  if (!out || out == INVALID_HANDLE_VALUE)
+    _wfreopen_s(&stream, L"CONOUT$", L"w", stdout);
+  if (!err || err == INVALID_HANDLE_VALUE)
+    _wfreopen_s(&stream, L"CONOUT$", L"w", stderr);
 }
 
 int wmain(int argc, wchar_t* argv[]) {
-  if (!IsDictionaryCli(argc, argv)) {
-    // The GUI entry points are launched from the tray or Explorer. Detach
-    // from the inherited or newly created console so those paths stay silent.
-    DetachGuiConsole();
-  }
+  if (IsDictionaryCli(argc, argv))
+    AttachDictionaryConsole();
 
   HINSTANCE hInstance = GetModuleHandle(NULL);
   LoadWeaselLogLevelFromRegistry();

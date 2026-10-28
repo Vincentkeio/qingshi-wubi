@@ -1,6 +1,25 @@
 """Discover installed runtime and user data without hard-coded development paths."""
+import json
 import os
 from pathlib import Path
+
+INSTALL_RECORD = Path(os.environ.get('ProgramFiles', r'C:\Program Files')) / 'QingshiWubi' / '.qingshi-install.json'
+
+
+def installed_runtime():
+    """安装器写的记录里那个 runtime 目录。
+
+    这是唯一不绑版本号的路子：每次安装都会把新目录写进 .qingshi-install.json，
+    升级到 1.0.14、1.0.15 都不用改任何脚本。
+    """
+    try:
+        data = json.loads(INSTALL_RECORD.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return None
+    runtime = data.get('runtime') if isinstance(data, dict) else None
+    if runtime and (Path(runtime) / 'WeaselServer.exe').is_file():
+        return str(runtime)
+    return None
 
 
 def registry_value(hive, key, name):
@@ -29,6 +48,7 @@ def user_directory():
 
 def runtime_directories():
     values = [
+        installed_runtime(),   # 安装记录优先：不绑版本号，升级后自动跟随
         registry_value('HKEY_LOCAL_MACHINE', r'Software\QingshiWubi', 'RuntimeDir'),
         registry_value('HKEY_LOCAL_MACHINE', r'Software\Rime\Weasel', 'WeaselRoot'),
         r'C:\Program Files\Rime\weasel-0.17.4',

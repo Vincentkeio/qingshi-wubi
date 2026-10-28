@@ -427,6 +427,7 @@
     </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\WeaselServer\TrayMenu.cpp" />
     <ClCompile Include="CandidateList.cpp" />
     <ClCompile Include="Compartment.cpp" />
     <ClCompile Include="Composition.cpp" />

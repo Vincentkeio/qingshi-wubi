@@ -150,6 +150,12 @@ protected:
 
     virtual void CustomizeMenu(HMENU) {}
 
+    // 青石：托盘右键交给子类自绘菜单。返回 true 表示已经处理完（不再走系统菜单）。
+    // menu 传进去是为了让子类直接读资源里的文字，三种语言不用各写一份。
+    virtual bool OnCustomMenu(HWND /*target*/, POINT /*pos*/, HMENU /*menu*/) {
+      return false;
+    }
+
 // Implementation
 protected:
     NOTIFYICONDATA  m_tnd;

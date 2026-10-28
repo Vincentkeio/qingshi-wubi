@@ -291,6 +291,19 @@ class InstallerTests(unittest.TestCase):
         self.system.pending = [str(self.installer.root / 'locked.dll')]
         self.assertTrue(self.installer.uninstall()['reboot'])
 
+    def test_standalone_settings_installs_shortcut_and_is_removed(self):
+        self.files['runtime/settings/QingshiSettings.exe'] = b'settings gui'
+        self.files['runtime/settings/_internal/Qt6Core.dll'] = b'qt runtime'
+        self.write_payload()
+        result = self.install()
+        runtime = Path(result['runtime'])
+        settings = runtime / 'settings/QingshiSettings.exe'
+        self.assertTrue(settings.is_file())
+        shortcut = self.installer.menu_directories()[0] / '青石五笔设置.lnk'
+        self.assertIn(str(settings), shortcut.read_text())
+        self.assertTrue(self.installer.uninstall()['ok'])
+        self.assertFalse(settings.exists())
+
     def test_custom_install_root_rejected_before_changes(self):
         self.installer.root = self.base
         with self.assertRaisesRegex(RuntimeError, '专用程序目录'):

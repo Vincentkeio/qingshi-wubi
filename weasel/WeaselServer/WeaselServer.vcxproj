@@ -490,6 +490,7 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|ARM'">Create</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="SystemTraySDK.cpp" />
+    <ClCompile Include="TrayMenu.cpp" />
     <ClCompile Include="WeaselServer.cpp" />
     <ClCompile Include="WeaselServerApp.cpp" />
     <ClCompile Include="WeaselService.cpp" />
@@ -502,6 +503,7 @@
     <ClInclude Include="resource.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="SystemTraySDK.h" />
+    <ClInclude Include="..\include\TrayMenu.h" />
     <ClInclude Include="WeaselServerApp.h" />
     <ClInclude Include="WeaselService.h" />
     <ClInclude Include="WeaselTrayIcon.h" />

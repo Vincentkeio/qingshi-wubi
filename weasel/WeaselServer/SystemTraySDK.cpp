@@ -791,6 +791,16 @@ LRESULT CSystemTray::OnTrayNotification(WPARAM wParam, LPARAM lParam) {
 
     CustomizeMenu(hSubMenu);
 
+    // 青石：先问子类要不要自绘菜单（配色跟候选窗一致），要的话就不再弹系统菜单。
+    {
+      POINT cursor;
+      GetCursorPos(&cursor);
+      if (OnCustomMenu(hTargetWnd, cursor, hSubMenu)) {
+        ::DestroyMenu(hMenu);
+        return 0L;
+      }
+    }
+
     // Display and track the popup menu
     POINT pos;
 #ifdef _WIN32_WCE

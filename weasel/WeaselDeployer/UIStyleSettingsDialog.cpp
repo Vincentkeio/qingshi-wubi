@@ -229,7 +229,7 @@ LRESULT UIStyleSettingsDialog::OnInitDialog(UINT, WPARAM, LPARAM, BOOL&) {
   style_value_combo_.Attach(GetDlgItem(IDC_STYLE_VALUE_COMBO));
   style_value_edit_.Attach(GetDlgItem(IDC_STYLE_VALUE_EDIT));
   set_style_.Attach(GetDlgItem(IDC_SET_STYLE));
-  preview_context_.preedit = weasel::Text(L"小狼毫pei se\u2038");
+  preview_context_.preedit = weasel::Text(L"青石五笔pei se\u2038");
   weasel::TextAttribute preedit_attribute(3, 9, weasel::HIGHLIGHTED);
   preedit_attribute.range.cursor = 9;
   preview_context_.preedit.attributes.push_back(preedit_attribute);

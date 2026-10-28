@@ -42,7 +42,7 @@ class WeaselServerApp {
   static fs::path install_dir() {
     WCHAR exe_path[MAX_PATH] = {0};
     GetModuleFileNameW(GetModuleHandle(NULL), exe_path, _countof(exe_path));
-    return fs::path(exe_path).remove_filename();
+    return fs::path(exe_path).parent_path();
   }
 
  public:

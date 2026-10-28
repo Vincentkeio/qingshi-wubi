@@ -22,6 +22,12 @@ if sys.version_info[:2] != (3, 11):
 
 def build_payload():
     entries = {}
+    settings = ROOT / 'dist/QingshiSettings'
+    if not (settings / 'QingshiSettings.exe').is_file():
+        raise FileNotFoundError('Build the standalone settings center before creating the payload.')
+    for path in settings.rglob('*'):
+        if path.is_file():
+            entries['runtime/settings/' + path.relative_to(settings).as_posix()] = path
     # WinSparkle.dll 不再打进安装包：小狼毫的更新模块已在 1.0.11 移除，exe 不再引用它。
     for name in ('WeaselServer.exe', 'WeaselDeployer.exe', 'weaselx64.dll', 'qingshi_game.ime', 'rime.dll',
                  'start_service.bat', 'stop_service.bat'):
@@ -62,6 +68,8 @@ def build_payload():
 
 
 def main():
+    from build_settings import build_settings
+    build_settings()
     build_payload()
     sys.path.insert(0, str(WORK / 'build-tools'))
     import PyInstaller.__main__

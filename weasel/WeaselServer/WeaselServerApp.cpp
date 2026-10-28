@@ -1,6 +1,8 @@
 #include "stdafx.h"
 #include "WeaselServerApp.h"
 #include <QingshiVersion.h>
+#include <TrayMenu.h>
+#include <QingshiSettings.h>
 #include <commctrl.h>
 #include <filesystem>
 #include <thread>
@@ -151,44 +153,32 @@ bool WeaselServerApp::check_update() {
 }
 
 void WeaselServerApp::SetupMenuHandlers() {
-  std::filesystem::path dir = install_dir();
-  m_server.AddMenuHandler(ID_WEASELTRAY_QUIT,
-                          [this] { return m_server.Stop() == 0; });
-  m_server.AddMenuHandler(ID_WEASELTRAY_DEPLOY,
-                          std::bind(execute, dir / L"WeaselDeployer.exe",
-                                    std::wstring(L"/deploy")));
+  m_server.AddMenuHandler(TrayMenu::kShowServerMenu, [this] {
+    tray_icon.ShowMenu();
+    return true;
+  });
   m_server.AddMenuHandler(
-      ID_WEASELTRAY_SETTINGS, [dir] {
-        // Packaged builds keep the settings launcher beside the runtime folder.
-        auto settings = dir.parent_path() / L"Qingshi.exe";
-        if (fs::exists(settings))
-          return WeaselServerApp::execute(settings, std::wstring());
-        for (auto target : {L"D:\\空间\\青石五笔输入法\\启动设置.bat",
-                            L"D:\\空间\\青石五笔输入法\\rime-dev\\gui\\启动设置.bat"}) {
-          if (fs::exists(fs::path(target)))
-            return WeaselServerApp::open(fs::path(target));
-        }
-        return WeaselServerApp::explore(WeaselUserDataPath());
+      ID_WEASELTRAY_SETTINGS, [] {
+        const bool opened = qingshi::OpenSettings();
+        if (!opened)
+          MessageBoxW(nullptr, L"未找到设置中心，请重新安装青石五笔。", L"青石五笔",
+                      MB_OK | MB_ICONERROR);
+        return opened;
       });
   m_server.AddMenuHandler(
-      ID_WEASELTRAY_DICT_MANAGEMENT,
-      std::bind(execute, dir / L"WeaselDeployer.exe", std::wstring(L"/dict")));
-  m_server.AddMenuHandler(
-      ID_WEASELTRAY_SYNC,
-      std::bind(execute, dir / L"WeaselDeployer.exe", std::wstring(L"/sync")));
-  // 帮助与讨论指向青石自己的入口，不再导向 rime.im（避免用户在那里下载到小狼毫）
-  m_server.AddMenuHandler(
-      ID_WEASELTRAY_WIKI,
-      std::bind(open, L"https://qingshi.funnyai.wiki/guide.html"));
-  m_server.AddMenuHandler(ID_WEASELTRAY_HOMEPAGE,
-                          std::bind(open, L"https://qingshi.funnyai.wiki/"));
-  m_server.AddMenuHandler(
-      ID_WEASELTRAY_FORUM,
-      std::bind(open, L"https://github.com/Vincentkeio/qingshi-wubi/issues"));
+      ID_WEASELTRAY_ABOUT, [] {
+        // 关于：版本、来源、许可，外加两个入口。不弹网页，先用消息框说清楚。
+        const std::wstring current = string_to_wstring(QINGSHI_VERSION, CP_UTF8);
+        std::wstring text =
+            L"青石五笔 v" + current +
+            L"\n\n基于 Rime 内核的五笔输入法。\n"
+            L"码表：86 / 98 / 新世纪，默认 86。\n"
+            L"许可：GNU GPL v3。第三方许可见安装目录。\n\n"
+            L"官网：https://qingshi.funnyai.wiki/\n"
+            L"源码：https://github.com/Vincentkeio/qingshi-wubi";
+        MessageBoxW(nullptr, text.c_str(), L"关于青石五笔",
+                    MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND);
+        return true;
+      });
   m_server.AddMenuHandler(ID_WEASELTRAY_CHECKUPDATE, check_update);
-  m_server.AddMenuHandler(ID_WEASELTRAY_INSTALLDIR, std::bind(explore, dir));
-  m_server.AddMenuHandler(ID_WEASELTRAY_USERCONFIG,
-                          std::bind(explore, WeaselUserDataPath()));
-  m_server.AddMenuHandler(ID_WEASELTRAY_LOGDIR,
-                          std::bind(explore, WeaselLogPath()));
 }

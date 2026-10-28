@@ -109,6 +109,15 @@ class RimeWithWeaselHandler : public weasel::RequestHandler {
   static bool _NoCandidateBeepEnabled();
   std::string m_beeped_code;  // 已经响过的编码，同一个码不重复响
 
+  // ── 四码唯一自动上屏 ────────────────────────────────────────────
+  // 打满 4 码只剩一个候选时直接上屏，省掉一次空格。
+  // 只认「正好 4 码 + 唯一候选」，简码（1-3 码）不动 —— 简码上屏会毁掉
+  // 五笔「先出编码再决定」的习惯，也容易把简码词误上屏。
+  // 开关在 HKCU\Software\Rime\Weasel\QingshiAutoCommitUnique，**缺省关闭**：
+  // 自动上屏会改变输入节奏，要用户显式打开。
+  bool _AutoCommitUniqueCode(RimeSessionId session_id);
+  static bool _UniqueCodeAutoCommitEnabled();
+
   // ── 候选调序（shadow 层）─────────────────────────────────────────
   // 规则存在 %APPDATA%\QingshiWubi\shadow\<方案>.yaml，**不改原词库**，
   // 也不触发部署；候选装配完在最后应用，所以压得住词频重排。

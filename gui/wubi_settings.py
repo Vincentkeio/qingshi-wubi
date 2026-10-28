@@ -28,7 +28,7 @@ except ImportError:
     yaml = None
 
 APP_NAME = "青石五笔输入法"
-APP_VER = "1.0.9"
+APP_VER = "1.0.10"
 from app_paths import user_directory, runtime_directories
 RIME_DIR = user_directory()
 WEASEL_CANDIDATES = runtime_directories()
@@ -215,27 +215,41 @@ class RimeConfig:
     REG_PATH = r"Software\Rime\Weasel"
     REG_NAME = "QingshiShiftLetterDirect"
     REG_BEEP = "QingshiBeepOnNoCandidate"
+    REG_AUTO_COMMIT = "QingshiAutoCommitUnique"
 
-    def no_candidate_beep(self):
-        """四码无候选提示音。默认开启：注册表里没有这个值也算开。"""
+    def _reg_flag(self, name, default=True):
+        """读注册表里的开关。值不存在就按默认值算（这两个功能默认都是开）。"""
         try:
             import winreg
             with winreg.OpenKey(winreg.HKEY_CURRENT_USER, self.REG_PATH) as k:
-                value, _ = winreg.QueryValueEx(k, self.REG_BEEP)
-                return bool(value)
+                return bool(winreg.QueryValueEx(k, name)[0])
         except Exception:
-            return True
+            return default
 
-    def set_no_candidate_beep(self, enabled):
+    def _set_reg_flag(self, name, enabled):
         try:
             import winreg
             with winreg.CreateKeyEx(
                     winreg.HKEY_CURRENT_USER, self.REG_PATH, 0, winreg.KEY_WRITE) as k:
-                winreg.SetValueEx(k, self.REG_BEEP, 0, winreg.REG_DWORD,
+                winreg.SetValueEx(k, name, 0, winreg.REG_DWORD,
                                   1 if enabled else 0)
             return True
         except Exception:
             return False
+
+    def no_candidate_beep(self):
+        """四码无候选提示音。默认开启。"""
+        return self._reg_flag(self.REG_BEEP)
+
+    def set_no_candidate_beep(self, enabled):
+        return self._set_reg_flag(self.REG_BEEP, enabled)
+
+    def auto_commit_unique(self):
+        """四码唯一自动上屏。**默认关闭** —— 会改变输入节奏，要显式打开。"""
+        return self._reg_flag(self.REG_AUTO_COMMIT, default=False)
+
+    def set_auto_commit_unique(self, enabled):
+        return self._set_reg_flag(self.REG_AUTO_COMMIT, enabled)
 
     def shift_letter_direct(self):
         try:
@@ -1144,6 +1158,11 @@ class MainWindow(QMainWindow):
         self.chk_beep.setToolTip(
             "打满 4 码却一个候选都没有时响一声，提醒编码打错了；默认开启")
         candidate_layout.addWidget(self.chk_beep)
+        self.chk_auto_commit = QCheckBox("四码唯一时自动上屏")
+        self.chk_auto_commit.setAccessibleName("四码只剩一个候选时自动上屏")
+        self.chk_auto_commit.setToolTip(
+            "打满 4 码只剩一个候选时直接上屏，省掉一次空格；默认关闭")
+        candidate_layout.addWidget(self.chk_auto_commit)
         candidate_layout.addStretch(1)
         preferences = QHBoxLayout()
         preferences.setSpacing(28)
@@ -1788,6 +1807,7 @@ class MainWindow(QMainWindow):
         self.chk_h.setChecked(st["horizontal"])
         self.chk_i.setChecked(st["inline_preedit"])
         self.chk_beep.setChecked(self.cfg.no_candidate_beep())
+        self.chk_auto_commit.setChecked(self.cfg.auto_commit_unique())
         idx = self.combo_scheme.findData(st["color_scheme"])
         if idx < 0:
             idx = 0
@@ -1825,6 +1845,7 @@ class MainWindow(QMainWindow):
             })
             self.cfg.set_shift_letter_direct(self.chk_shift_direct.isChecked())
             self.cfg.set_no_candidate_beep(self.chk_beep.isChecked())
+            self.cfg.set_auto_commit_unique(self.chk_auto_commit.isChecked())
             self.cfg.write_weasel({
                 "color_scheme": self.combo_scheme.currentData(),
                 "font_face": self.combo_font.currentText(),

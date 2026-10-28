@@ -38,8 +38,9 @@ class SaveFlowTests(unittest.TestCase):
         self.addCleanup(self.win.deleteLater)
         self.win.cfg = ws.RimeConfig(self.temp.name)
         self.win.cfg.write_weasel(BASE_STYLE)
-        # 提示音开关读的是真实注册表，测试里固定成「默认开启」。
-        with patch.object(self.win.cfg, 'no_candidate_beep', return_value=True):
+        # 提示音 / 自动上屏开关读的是真实注册表，测试里固定成各自的默认值。
+        with patch.object(self.win.cfg, 'no_candidate_beep', return_value=True), \
+             patch.object(self.win.cfg, 'auto_commit_unique', return_value=False):
             self.win.load()
 
     def _save(self, **patches):
@@ -51,8 +52,9 @@ class SaveFlowTests(unittest.TestCase):
                                          return_value=patches.pop('needs_deploy', False)),
             'info': patch.object(ws.QMessageBox, 'information'),
             'dialog': patch.object(ws, 'BusyDialog'),
-            # 这两项写真实注册表，测试里必须挡住。
+            # 这几项写真实注册表，测试里必须挡住。
             'beep': patch.object(self.win.cfg, 'set_no_candidate_beep', return_value=True),
+            'auto': patch.object(self.win.cfg, 'set_auto_commit_unique', return_value=True),
             'shift': patch.object(self.win.cfg, 'set_shift_letter_direct', return_value=True),
         }
         started = {k: v.start() for k, v in context.items()}
@@ -90,6 +92,14 @@ class SaveFlowTests(unittest.TestCase):
         self.win.chk_beep.setChecked(False)
         calls = self._save()
         calls['beep'].assert_called_with(False)
+
+    def test_auto_commit_unique_is_a_setting_and_defaults_off(self):
+        self.assertEqual(self.win.chk_auto_commit.text(), '四码唯一时自动上屏')
+        self.assertFalse(self.win.chk_auto_commit.isChecked(),
+                         '四码唯一上屏默认关闭，要显式打开')
+        self.win.chk_auto_commit.setChecked(True)
+        calls = self._save()
+        calls['auto'].assert_called_with(True)
 
 
 if __name__ == '__main__':

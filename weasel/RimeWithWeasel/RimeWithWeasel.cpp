@@ -414,6 +414,35 @@ void RimeWithWeaselHandler::_BeepIfNoCandidate(RimeSessionId session_id) {
   ShadowTrace("[beep] no candidate for code=%s", code.c_str());
 }
 
+bool RimeWithWeaselHandler::_UniqueCodeAutoCommitEnabled() {
+  // 默认关闭：自动上屏会改变输入节奏，必须显式打开才生效。
+  DWORD value = 0;
+  DWORD size = sizeof(value);
+  if (::RegGetValueW(HKEY_CURRENT_USER, L"Software\\Rime\\Weasel",
+                     L"QingshiAutoCommitUnique", RRF_RT_REG_DWORD, nullptr,
+                     &value, &size) != ERROR_SUCCESS)
+    return false;
+  return value != 0;
+}
+
+bool RimeWithWeaselHandler::_AutoCommitUniqueCode(RimeSessionId session_id) {
+  if (!session_id || !_UniqueCodeAutoCommitEnabled())
+    return false;
+  RIME_STRUCT(RimeContext, ctx);
+  if (!rime_api->get_context(session_id, &ctx))
+    return false;
+  const std::string code = _CurrentCode(ctx);
+  const int count = ctx.menu.num_candidates;
+  rime_api->free_context(&ctx);
+  // 只认正好 4 码、且只剩一个候选。五笔是精确码表（enable_sentence /
+  // enable_encoder 都关着），这个组合基本就是「这个码只有这一个字」。
+  if (code.size() != 4 || count != 1)
+    return false;
+  ShadowTrace("[auto] unique 4-key code=%s -> commit", code.c_str());
+  rime_api->select_candidate_on_current_page(session_id, 0);
+  return true;
+}
+
 BOOL RimeWithWeaselHandler::ProcessKeyEvent(KeyEvent keyEvent,
                                             WeaselSessionId ipc_id,
                                             EatLine eat) {
@@ -476,6 +505,10 @@ BOOL RimeWithWeaselHandler::ProcessKeyEvent(KeyEvent keyEvent,
       rime_api->set_option(session_id, "ascii_mode", True);
     }
   }
+  // 四码唯一自动上屏：必须在 _Respond 之前选掉，这样提交串才会跟着这一轮
+  // 应答一起送到宿主；晚一步就得上屏到下一次按键里去了。
+  if (handled)
+    _AutoCommitUniqueCode(session_id);
   _Respond(ipc_id, eat);
   _UpdateUI(ipc_id);
   // 输入法确实吃下了这个键，才检查「四码无候选」。

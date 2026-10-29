@@ -1,10 +1,10 @@
 {
-  "version": "1.0.17",
+  "version": "2.0.0",
   "platform": "Windows 10/11 x64",
   "installer": {
     "name": "QingshiSetup.exe",
-    "size": 26045326,
-    "sha256": "f8afaa6adaab8c4bb52c1f11b353971ac3f17b7b0a0ef92a0e8623b3c7cb9040"
+    "size": 26046278,
+    "sha256": "0d5f87a51c2bbf9e90aa240496cd1e44ce73d1c1735d801153200f9d8b5a976f"
   },
   "upstream_weasel": "82b50c9e9b9ee0bd31357db6f25ddc804546c7f7",
   "librime_binary_revision": "33e7814",
@@ -15,12 +15,12 @@
   "engine": "Weasel / Rime",
   "native": {
     "WeaselServer.exe": {
-      "size": 2560000,
-      "sha256": "ead0747184908c95e6e8c4f5e9ea677f1db35c035363d1012bb40e75da526bf0"
+      "size": 2560512,
+      "sha256": "3032363d5e7ef6ced39735937075a64e2c4ef0af75e3b98ea145df31828d23f8"
     },
     "WeaselDeployer.exe": {
       "size": 1300992,
-      "sha256": "2ce13a12e1d687fb203eb2119db9d4c8356219a4288e747c97b9399f5fd9610d"
+      "sha256": "abe0bbac4d93d29e53f406dd63cc0f9e1efd721a5d203ac930b1843f394053d5"
     },
     "weaselx64.dll": {
       "size": 1233920,
@@ -36,30 +36,23 @@
     }
   },
   "changes": [
-    "设置中心、首次配置向导、安装和卸载界面改为 Windows 原生实现，安装包不再包含 Qt 运行库",
-    "按原版黑白灰界面对齐品牌图标、导航、方案卡片、表单与按钮，并重新整理关于页文案",
-    "修复安装窗口关闭后进程不退出、配置向导入口和后台更新入口的原生迁移问题",
-    "保留三套五笔方案、自定义词条和词序、配置备份、自定义快捷键与更新检查",
-    "保留 1.0.16 的方案菜单热键清理，F4 不再被方案菜单占用",
-    "设置中心、安装和卸载窗口在当前显示器可用区域居中，修复完成状态文字被提示区遮挡的问题",
-    "方案卡片的单选圆圈改用 Windows GDI+ 抗锯齿绘制，保持原有黑白灰样式",
-    "安装与设置界面统一使用微软雅黑和自然 ClearType 渲染，修复 Shift 两行选项区域重叠导致的文字裁切"
+    "四码无候选时，空格或回车清空编码，不再提交错误码串",
+    "四码无候选后继续输入字母时，清除旧编码并从当前字母开始新编码",
+    "上述清除与重输行为不依赖四码无候选提示音开关",
+    "保留五笔 86、98、新世纪方案、自定义词条与词序、配置备份及快捷键设置"
   ],
   "validation": {
-    "automated_tests": 61,
+    "native_component_build": "passed (MSVC x64 Release)",
+    "automated_tests": "not run for 2.0.0",
     "embedded_payload_checksums": "passed",
     "payload_files": 128,
-    "qt_runtime_absent": "verified in both executable archives and payload",
-    "native_ui_preview": "8 settings pages at 100% and 150%; minimum window; installer/uninstaller preview states",
-    "local_installation": "native 1.0.16 build installed successfully with settings preserved; 1.0.17 entry routing covered by regression tests",
-    "native_engine_binaries": "unchanged from local 1.0.16; hashes recorded above",
-    "installer_centering_and_text": "settings/installer/uninstaller passed at 100%, 125%, 150% and 200%; settings fits monitor work area; no overlapping notice/progress text",
-    "radio_antialiasing": "smooth edges and scheme selection passed at 100%, 125%, 150% and 200%",
-    "font_and_shift_layout": "Microsoft YaHei selected; Shift option regions do not overlap at 100%, 125%, 150% and 200%"
+    "qt_runtime_absent": "verified in installer and settings archives and payload",
+    "four_code_no_candidate": "space/enter clear; next letter restarts encoding; independent of beep setting",
+    "local_test_installation": "1.0.17 build containing the same input handling was installed; 2.0.0 package not separately installed"
   },
   "settings": {
     "path": "runtime/settings/QingshiSettings.exe",
-    "size": 2235974,
-    "sha256": "c5891cc1f861c8e0d734cf4c9004a0689e6b8fd67e7ef2f6f6297b3f618b6b04"
+    "size": 2235973,
+    "sha256": "26e86186e91c506c699e6213ab54fa493804e7b1513e92f350ba86f77202a950"
   }
 }

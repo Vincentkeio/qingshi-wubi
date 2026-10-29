@@ -452,6 +452,41 @@ BOOL RimeWithWeaselHandler::ProcessKeyEvent(KeyEvent keyEvent,
     return FALSE;
   RimeSessionId session_id = to_session_id(ipc_id);
 
+  // 四码无候选时，空格或回车用于取消错误编码；继续输入字母则从该字母
+  // 重新开始编码。此行为不依赖提示音开关，避免原始错码被默认提交。
+  const bool plain_key =
+      !(keyEvent.mask & (ibus::Modifier::SHIFT_MASK |
+                         ibus::Modifier::CONTROL_MASK |
+                         ibus::Modifier::ALT_MASK |
+                         ibus::Modifier::RELEASE_MASK));
+  const bool cancel_key =
+      keyEvent.keycode == ibus::space || keyEvent.keycode == ibus::Return ||
+      keyEvent.keycode == ibus::KP_Enter;
+  const bool code_key =
+      (keyEvent.keycode >= 'a' && keyEvent.keycode <= 'z') ||
+      (keyEvent.keycode >= 'A' && keyEvent.keycode <= 'Z');
+  if (plain_key && (cancel_key || code_key)) {
+    RIME_STRUCT(RimeContext, ctx);
+    if (rime_api->get_context(session_id, &ctx)) {
+      const std::string code = _CurrentCode(ctx);
+      const bool no_candidates = ctx.menu.num_candidates == 0;
+      rime_api->free_context(&ctx);
+      if (no_candidates && code.size() >= 4) {
+        rime_api->clear_composition(session_id);
+        m_beeped_code.clear();
+        if (cancel_key) {
+          ShadowTrace("[key] cancel no-candidate code=%s", code.c_str());
+          _Respond(ipc_id, eat);
+          _UpdateUI(ipc_id);
+          m_active_session = ipc_id;
+          return TRUE;
+        }
+        ShadowTrace("[key] restart no-candidate code=%s key=%u",
+                    code.c_str(), keyEvent.keycode);
+      }
+    }
+  }
+
   // ── 候选调序生效时，选词键按「界面上看到的顺序」走 ──────────────────
   // 重排只改了交给客户端的候选数组，引擎内部的顺序没变：空格上屏的是内部
   // 第一个候选、数字键选的也是内部序号。不在这里换一次，用户按 1 拿到的是

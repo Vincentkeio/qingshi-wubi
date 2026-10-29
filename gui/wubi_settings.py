@@ -28,7 +28,7 @@ except ImportError:
     yaml = None
 
 APP_NAME = "青石五笔输入法"
-APP_VER = "1.0.16"
+APP_VER = "2.0.0"
 from app_paths import user_directory, runtime_directories
 RIME_DIR = user_directory()
 WEASEL_CANDIDATES = runtime_directories()

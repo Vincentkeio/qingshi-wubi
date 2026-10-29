@@ -2,7 +2,7 @@
 
 ## 发布版本
 
-v1.0.17 面向 Windows 10/11 x64。Release 的 `QingshiSetup.exe` 是独立单文件安装包，内含设置中心及输入法运行时。安装与卸载共用同一程序入口。日常设置使用运行时目录中独立的 `settings/QingshiSettings.exe`，避免每次解压安装包。
+v2.0.0 面向 Windows 10/11 x64。Release 的 `QingshiSetup.exe` 是独立单文件安装包，内含设置中心及输入法运行时。安装与卸载共用同一程序入口。日常设置使用运行时目录中独立的 `settings/QingshiSettings.exe`，避免每次解压安装包。
 
 ## 获取源码
 

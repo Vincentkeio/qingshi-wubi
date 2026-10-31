@@ -433,6 +433,7 @@ class App:
             cfg.set_shift_letter_direct(values["shift_direct"])
             cfg.set_no_candidate_beep(values["beep"])
             cfg.set_auto_commit_unique(values["auto_commit"])
+            cfg.set_symbols_direct(values["symbols_direct"])
             cfg.write_weasel(values["style"])
             ensure_fixed_order(cfg.dir)
             if shortcuts_changed or cfg.exists(hotkeys.FILE):
@@ -447,16 +448,16 @@ class App:
         needs_deploy = cfg.appearance_needs_deploy()
         plan = apply_plan(appearance_changed, phrases_changed, needs_deploy)
 
-        if shortcuts_changed or hotkeys.needs_deploy(cfg.dir):
-            ok = run_with_busy(self, "正在应用快捷键", "正在更新输入法配置…",
-                               "完成后，三套五笔方案会使用新的快捷键。",
+        if shortcuts_changed or hotkeys.needs_deploy(cfg.dir) or cfg.symbols_need_deploy(values["symbols_direct"]):
+            ok = run_with_busy(self, "正在应用设置", "正在更新输入法配置…",
+                               "完成后，三套五笔方案会使用新的设置。",
                                lambda: cfg.deploy(wait=True) and cfg.restart_server())
             if ok:
                 hot.snapshot = shortcut_values
                 hot.shift_snapshot = shift_commit
                 self.phrase_snapshot = list(values["phrases"])
-            text = ("快捷键已保存并生效。" if ok else
-                    "快捷键已保存，但没有完成应用；请再次点击「应用」重试。")
+            text = ("设置已保存并生效。" if ok else
+                    "设置已保存，但没有完成应用；请再次点击「应用」重试。")
         elif plan == "restart":
             ok = run_with_busy(self, "正在应用词条", "正在重启输入法服务…",
                                "自定义词条是稳定词典，服务重启后才会出现在候选里。",

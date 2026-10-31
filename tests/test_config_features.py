@@ -13,6 +13,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'gui'))
 import config_bundle as bundle
 from fixed_order import ensure_fixed_order
 from update_checker import UpdateChecker, API, PREFIX
+from rime_config import RimeConfig
+from symbol_settings import ensure_symbol_preference
 
 
 class ConfigurationTests(unittest.TestCase):
@@ -24,6 +26,36 @@ class ConfigurationTests(unittest.TestCase):
         self.target = self.root / 'target'
         self.source.mkdir()
         self.target.mkdir()
+
+    def test_symbol_direct_setting_and_presets(self):
+        cfg = RimeConfig(str(self.source))
+        self.assertTrue(cfg.symbols_direct())
+        for enabled in (False, True):
+            cfg.set_symbols_direct(enabled)
+            self.assertEqual(cfg.symbols_direct(), enabled)
+            for sid in ('wubi86', 'wubi98', 'wubi06'):
+                data = yaml.safe_load((self.source / (sid + '.custom.yaml')).read_text(encoding='utf-8'))
+                self.assertEqual(data['patch']['punctuator/import_preset'],
+                                 'symbols_direct' if enabled else 'symbols')
+        pkg = Path(__file__).resolve().parents[1] / 'pkg'
+        original = yaml.safe_load((pkg / 'symbols.yaml').read_text(encoding='utf-8'))['punctuator']
+        direct = yaml.safe_load((pkg / 'symbols_direct.yaml').read_text(encoding='utf-8'))['punctuator']
+        for shape in ('half_shape', 'full_shape'):
+            for key, value in original[shape].items():
+                self.assertEqual(direct[shape][key], {'commit': value[0]} if isinstance(value, list) else value)
+        self.assertEqual(original['symbols'], direct['symbols'])
+
+    def test_symbol_preference_migrates_upgrade_and_preserves_choice(self):
+        ensure_symbol_preference(self.source)
+        cfg = RimeConfig(str(self.source))
+        self.assertTrue(cfg.symbols_direct())
+        cfg.set_symbols_direct(False)
+        ensure_symbol_preference(self.source)
+        self.assertFalse(cfg.symbols_direct())
+        (self.source / 'wubi98.custom.yaml').unlink()
+        ensure_symbol_preference(self.source)
+        restored = yaml.safe_load((self.source / 'wubi98.custom.yaml').read_text(encoding='utf-8'))
+        self.assertEqual(restored['patch']['punctuator/import_preset'], 'symbols')
 
     def test_roundtrip_phrases_order_and_backup(self):
         (self.source / 'custom_phrase.txt').write_text('自定义\tzz\t9999\n', encoding='utf-8')

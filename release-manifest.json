@@ -1,58 +1,22 @@
 {
-  "version": "2.0.0",
-  "platform": "Windows 10/11 x64",
+  "version": "2.0.1",
   "installer": {
     "name": "QingshiSetup.exe",
-    "size": 26046278,
-    "sha256": "0d5f87a51c2bbf9e90aa240496cd1e44ce73d1c1735d801153200f9d8b5a976f"
-  },
-  "upstream_weasel": "82b50c9e9b9ee0bd31357db6f25ddc804546c7f7",
-  "librime_binary_revision": "33e7814",
-  "submodules": {
-    "weasel/librime": "1c23358157934bd6e6d6981f0c0164f05393b497",
-    "weasel/plum": "cab9ed35289f2022b6888503750d2dfb1851dbe0"
-  },
-  "engine": "Weasel / Rime",
-  "native": {
-    "WeaselServer.exe": {
-      "size": 2560512,
-      "sha256": "3032363d5e7ef6ced39735937075a64e2c4ef0af75e3b98ea145df31828d23f8"
-    },
-    "WeaselDeployer.exe": {
-      "size": 1300992,
-      "sha256": "abe0bbac4d93d29e53f406dd63cc0f9e1efd721a5d203ac930b1843f394053d5"
-    },
-    "weaselx64.dll": {
-      "size": 1233920,
-      "sha256": "49023c044cb65cc906301e29f9262193271ec877ce87a695546cdf69961f6ec8"
-    },
-    "qingshi_game.ime": {
-      "size": 678400,
-      "sha256": "61cab65a57e1553381b6f39203b6fc4c0447ae02c3df6b74f3655841487c302f"
-    },
-    "rime.dll": {
-      "size": 3739136,
-      "sha256": "86b4c7357d4c6d293ce5589b234d8859ca2ac30923a03bedfa3926eeaf97fb0b"
-    }
-  },
-  "changes": [
-    "四码无候选时，空格或回车清空编码，不再提交错误码串",
-    "四码无候选后继续输入字母时，清除旧编码并从当前字母开始新编码",
-    "上述清除与重输行为不依赖四码无候选提示音开关",
-    "保留五笔 86、98、新世纪方案、自定义词条与词序、配置备份及快捷键设置"
-  ],
-  "validation": {
-    "native_component_build": "passed (MSVC x64 Release)",
-    "automated_tests": "not run for 2.0.0",
-    "embedded_payload_checksums": "passed",
-    "payload_files": 128,
-    "qt_runtime_absent": "verified in installer and settings archives and payload",
-    "four_code_no_candidate": "space/enter clear; next letter restarts encoding; independent of beep setting",
-    "local_test_installation": "1.0.17 build containing the same input handling was installed; 2.0.0 package not separately installed"
+    "size": 26073579,
+    "sha256": "4e08986b989cbcb46044cb1555ae717ba528402c1d102601e371844d51b21594"
   },
   "settings": {
-    "path": "runtime/settings/QingshiSettings.exe",
-    "size": 2235973,
-    "sha256": "26e86186e91c506c699e6213ab54fa493804e7b1513e92f350ba86f77202a950"
+    "size": 2236701,
+    "sha256": "d2282b0040ec72ebbd0d62f89cdf3dae63b64bff66f05bb7ab799224d0be2188"
+  },
+  "changes": [
+    "符号直接上屏选项默认开启，可恢复符号候选",
+    "升级时默认设置立即生效并保留用户选择"
+  ],
+  "validation": {
+    "automated_tests": "64 passed",
+    "payload_checksums": "130 passed",
+    "rime_deployment": "three schemas, both modes passed",
+    "installation": "2.0.1 package not installed for live verification"
   }
 }

@@ -152,7 +152,7 @@ translator:
     - "^z.*$"
 
 punctuator:
-  import_preset: symbols
+  import_preset: symbols_direct
 
 key_binder:
   import_preset: default

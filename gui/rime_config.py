@@ -16,7 +16,7 @@ except ImportError:
     yaml = None
 
 APP_NAME = "青石五笔输入法"
-APP_VER = "2.0.0"
+APP_VER = "2.0.1"
 from app_paths import user_directory, runtime_directories
 RIME_DIR = user_directory()
 WEASEL_CANDIDATES = runtime_directories()
@@ -197,6 +197,23 @@ class RimeConfig:
 
     def set_auto_commit_unique(self, enabled):
         return self._set_reg_flag(self.REG_AUTO_COMMIT, enabled)
+
+    def symbols_direct(self):
+        patch = self.read_yaml('wubi86.custom.yaml').get('patch') or {}
+        return patch.get('punctuator/import_preset', 'symbols_direct') != 'symbols'
+
+    def set_symbols_direct(self, enabled):
+        preset = 'symbols_direct' if enabled else 'symbols'
+        for sid, _, _ in SCHEMAS:
+            self.merge_patch(sid + '.custom.yaml', {'punctuator/import_preset': preset})
+
+    def symbols_need_deploy(self, enabled):
+        expected = 'symbols_direct' if enabled else 'symbols'
+        for sid, _, _ in SCHEMAS:
+            schema = self.read_yaml('build/' + sid + '.schema.yaml')
+            if (schema.get('punctuator') or {}).get('import_preset') != expected:
+                return True
+        return False
 
     def shift_letter_direct(self):
         try:

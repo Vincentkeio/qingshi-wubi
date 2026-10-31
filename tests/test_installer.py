@@ -205,6 +205,18 @@ class InstallerTests(unittest.TestCase):
         self.install()
         self.assertEqual(phrase.read_text(), 'my latest words')
 
+    def test_upgrade_initializes_symbol_default_and_preserves_opt_out(self):
+        from rime_config import RimeConfig
+        self.install()
+        cfg = RimeConfig(str(self.installer.data))
+        for sid in ('wubi86', 'wubi98', 'wubi06'):
+            (self.installer.data / (sid + '.custom.yaml')).write_text('patch: {}\n', encoding='utf-8')
+        self.install()
+        self.assertTrue(cfg.symbols_direct())
+        cfg.set_symbols_direct(False)
+        self.install()
+        self.assertFalse(cfg.symbols_direct())
+
     def test_other_rime_data_and_registry_survive(self):
         old_userdir = self.profile / 'AppData/Roaming/Rime'
         self.system.reg.set(winreg.HKEY_CURRENT_USER, backend.RIME_KEY, 'RimeUserDir', str(old_userdir))

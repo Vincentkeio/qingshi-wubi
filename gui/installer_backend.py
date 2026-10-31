@@ -19,7 +19,7 @@ import winreg
 import zipfile
 
 APP_ID = 'QingshiWubi'
-VERSION = '2.0.0'
+VERSION = '2.0.1'
 APP_KEY = r'Software\QingshiWubi'
 RIME_KEY = r'Software\Rime\Weasel'
 UNINSTALL_KEY = r'Software\Microsoft\Windows\CurrentVersion\Uninstall\QingshiWubi'
@@ -605,6 +605,8 @@ class Installer:
             atomic_json(self.data / DATA_MARKER, {'app_id': APP_ID})
             from fixed_order import ensure_fixed_order
             ensure_fixed_order(self.data)
+            from symbol_settings import ensure_symbol_preference
+            ensure_symbol_preference(self.data)
             self.progress(35, '正在停止旧版输入法服务')
             self.system.stop([self.root] + ([legacy] if legacy else []))
             self.progress(45, '正在注册输入法')

@@ -346,6 +346,7 @@ class CommonPage(Page):
         self.chk_i = Check(self, "编码跟随光标")
         self.chk_beep = Check(self, "四码无候选时提示音")
         self.chk_auto = Check(self, "四码唯一时自动上屏")
+        self.chk_symbols_direct = Check(self, "符号直接上屏，不显示候选")
 
     def pick_schema(self, sid):
         self.schema = sid
@@ -395,10 +396,10 @@ class CommonPage(Page):
         self.lbl_page.move(right_x, y + 8, right_w - 112, 20)
         self.spin_page.move(right_x + right_w - 104, y, 104, 38)
         y += 48
-        for chk in (self.chk_h, self.chk_i, self.chk_beep, self.chk_auto):
+        for chk in (self.chk_h, self.chk_i, self.chk_beep, self.chk_auto, self.chk_symbols_direct):
             chk.move(right_x, y, right_w, 24)
             y += 29
-        self.content_height = 572
+        self.content_height = 600
 
     def load(self):
         self.schema = self.cfg.current_schema()
@@ -411,6 +412,7 @@ class CommonPage(Page):
         self.chk_i.set_checked(style["inline_preedit"])
         self.chk_beep.set_checked(self.cfg.no_candidate_beep())
         self.chk_auto.set_checked(self.cfg.auto_commit_unique())
+        self.chk_symbols_direct.set_checked(self.cfg.symbols_direct())
 
     def collect(self):
         return {
@@ -423,6 +425,7 @@ class CommonPage(Page):
             "shift_direct": self.chk_shift_direct.is_checked(),
             "beep": self.chk_beep.is_checked(),
             "auto_commit": self.chk_auto.is_checked(),
+            "symbols_direct": self.chk_symbols_direct.is_checked(),
             "horizontal": self.chk_h.is_checked(),
             "inline_preedit": self.chk_i.is_checked(),
         }
